@@ -10,7 +10,7 @@ from flight_radar.alert import HISTORY_DAYS, Alert, find_alerts, suppress_repeat
 from flight_radar.config import Route
 from flight_radar.models import Observation, Quote
 from flight_radar.providers import Provider
-from flight_radar.store import append, read_since
+from flight_radar.store import append, read_since, write_curves
 
 
 class Paths:
@@ -18,6 +18,8 @@ class Paths:
         self.root = root
         self.routes = root / "routes.yaml"
         self.data = root / "data" / "quotes"
+        self.curves = root / "data" / "curves"
+        self.docs = root / "docs" / "index.html"
         self.state = root / "state" / "alerts.json"
         self.health = root / "state" / "health.json"
 
@@ -40,6 +42,7 @@ def run(
     for route in routes:
         observed = collect(route, provider, observed_at)
         append(paths.data, observed.quotes)
+        write_curves(paths.curves, route.id, observed.insights)
         collected += len(observed.quotes)
 
         history = _history_before(paths.data, route, observed_at)

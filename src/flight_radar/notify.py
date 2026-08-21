@@ -47,19 +47,12 @@ def format_alert(alert: Alert) -> str:
 
 
 def _market_lines(alert: Alert) -> list[str]:
-    """How today compares with the last sixty days of the same measure.
-
-    Google's curve ignores the stop and duration limits, so when its price
-    differs from the fare we would actually book, name which one is ranked.
-    """
+    """How today compares with the last sixty days of the same measure."""
     market = alert.market
     if market is None:
         return []
 
-    ranking = f"최근 {market.days}일 중 하위 {market.percentile:.0f}%"
-    if market.today_krw != alert.quote.price_krw:
-        ranking += f" (무제약 최저 {market.today_krw:,}원 기준)"
-    return [ranking, f"그동안 최저 {market.low_krw:,}원"]
+    return [market.describe(alert.quote.price_krw), f"그동안 최저 {market.low_krw:,}원"]
 
 
 def _why(alert: Alert) -> str:

@@ -6,12 +6,14 @@ from conftest import make_quote
 
 from flight_radar.cli import main
 from flight_radar.config import load_routes
+from flight_radar.models import PriceInsight
 from flight_radar.providers import FakeProvider
-from flight_radar.store import append, read_since
+from flight_radar.store import append, read_curves, read_latest, read_since, write_curves
 from flight_radar.tracker import Paths, collect, run
 
 KST = timezone.utc
 NOW = datetime(2026, 8, 21, 9, 0, tzinfo=KST)
+DEPART, RETURN = date(2026, 10, 5), date(2026, 10, 15)
 
 
 def test_date_pairs_stay_inside_the_travel_window(route):
@@ -87,6 +89,47 @@ def test_read_since_spans_month_boundaries(tmp_path):
     restored = read_since(tmp_path, "icn-lis", date(2026, 7, 25), date(2026, 8, 5))
 
     assert len(restored) == 2
+
+
+def test_read_latest_isolates_the_most_recent_sweep(tmp_path):
+    """Two runs a day must not be blended into one picture."""
+    morning = datetime(2026, 8, 21, 7, 5, tzinfo=KST)
+    evening = datetime(2026, 8, 21, 19, 5, tzinfo=KST)
+    append(tmp_path, [make_quote(1_000_000, date(2026, 8, 20)),
+                      make_quote(1_100_000, date(2026, 8, 21), observed_at=morning),
+                      make_quote(1_200_000, date(2026, 8, 21), observed_at=evening)])
+
+    latest = read_latest(tmp_path, "icn-lis", date(2026, 8, 21))
+
+    assert [quote.price_krw for quote in latest] == [1_200_000]
+
+
+def test_curves_keep_points_that_fell_off_googles_window(tmp_path):
+    """Google reaches sixty days back and no further; the record has to outlive that."""
+    june = PriceInsight(DEPART, RETURN, {date(2026, 6, 22): 1_700_000, date(2026, 8, 21): 1_120_100})
+    august = PriceInsight(DEPART, RETURN, {date(2026, 8, 21): 1_120_100, date(2026, 8, 22): 1_050_000})
+
+    write_curves(tmp_path, "icn-lis", [june])
+    write_curves(tmp_path, "icn-lis", [august])
+
+    stored = read_curves(tmp_path, "icn-lis")["2026-10-05..2026-10-15"]
+    assert stored == {
+        date(2026, 6, 22): 1_700_000,
+        date(2026, 8, 21): 1_120_100,
+        date(2026, 8, 22): 1_050_000,
+    }
+
+
+def test_reading_curves_before_any_run_is_empty_not_an_error(tmp_path):
+    assert read_curves(tmp_path, "icn-lis") == {}
+
+
+def test_run_persists_a_curve_for_every_date_pair(tmp_path, route):
+    paths = Paths(tmp_path)
+
+    run([route], FakeProvider(), paths, NOW)
+
+    assert len(read_curves(paths.curves, route.id)) == len(route.date_pairs())
 
 
 def test_run_persists_every_quote(tmp_path, route):

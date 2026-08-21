@@ -8,7 +8,11 @@ from datetime import date
 
 from conftest import make_insight
 
-from flight_radar.insight import read_market
+from flight_radar.insight import cheapest_by_day, rank_today
+
+
+def read_market(insights):
+    return rank_today(cheapest_by_day(i.curve_krw for i in insights))
 
 
 def test_a_record_low_reads_as_zero():

@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 track = "flight_radar.cli:main"
+dashboard = "flight_radar.cli:dashboard"
 
 [dependency-groups]
 dev = ["pytest>=8.0"]

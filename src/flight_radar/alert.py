@@ -9,12 +9,11 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from flight_radar.config import Route
-from flight_radar.insight import Market, read_market
+from flight_radar.insight import LOW_PERCENTILE, Market, cheapest_by_day, rank_today
 from flight_radar.models import PriceInsight, Quote
 
 HISTORY_DAYS = 30
 DROP_RATIO = 0.90
-LOW_PERCENTILE = 15.0
 RENOTIFY_AFTER_DAYS = 7
 
 
@@ -44,7 +43,7 @@ def find_alerts(
 
     best = min(eligible, key=lambda quote: quote.price_krw)
     baseline = _recent_low(route, history, today)
-    market = read_market(insights)
+    market = rank_today(cheapest_by_day(insight.curve_krw for insight in insights))
 
     if best.price_krw <= route.target_price_krw:
         return [Alert(best, "target", baseline, market)]

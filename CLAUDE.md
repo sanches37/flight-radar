@@ -37,6 +37,7 @@ uv run pytest                 # 테스트
 uv run track --provider google_flights            # 실제 수집 한 사이클 (~2분)
 uv run track --provider google_flights --dry-run  # 수집·저장만, 알림 없음
 uv run track --provider fake                      # 네트워크 없이 파이프라인만
+uv run dashboard              # 저장된 데이터로 docs/index.html 재생성 (수집 없음)
 ```
 
 추적 대상 변경은 `routes.yaml` 하나만 고치면 된다.
@@ -46,6 +47,11 @@ uv run track --provider fake                      # 네트워크 없이 파이�
 **repo가 곧 DB.** GitHub Actions에 영구 디스크가 없으므로
 `data/quotes/{route}/{YYYY-MM}.jsonl`에 append-only로 쌓고 Action이 커밋한다.
 diff가 한 줄씩만 늘고, git 히스토리가 그대로 백업.
+
+**Google 곡선만 예외적으로 병합 갱신이다** (`data/curves/{route}.json`).
+매 실행 같은 61점을 다시 주므로 append하면 중복만 쌓인다. 맵으로 합치면 diff가
+쌍당 1~2줄이고, Google의 60일 창이 롤오프해도 예전 점이 파일에 남는다.
+과거 점이 사후 수정되지 않음은 실측으로 확인(같은 쌍 두 번 fetch → 61/61 동일).
 
 **수집은 전부, 필터는 알림에서만.** provider는 `routes.yaml`의 constraints를 보지 않는다.
 제약을 나중에 바꿔도 이미 쌓인 히스토리를 새 기준으로 재평가할 수 있어야 하므로.
@@ -96,14 +102,15 @@ src/flight_radar/
   providers/base.py      Provider 프로토콜
   providers/fake.py      결정론적 fake (네트워크 없이 테스트)
   providers/google_flights.py  fast-flights 스크레이핑 (통합권)
-  store.py               append-only JSONL 읽기/쓰기
+  store.py               견적은 append-only JSONL, 곡선은 병합 갱신 맵
   alert.py               목표가·급락 판정 + 중복 차단
   notify.py              텔레그램 (자격증명 없으면 stdout)
   health.py              연속 0건 수집 감시 (조용한 죽음 탐지)
   tracker.py             한 사이클 조립
   cli.py                 진입점
-.github/workflows/track.yml  하루 2회 cron + data/state 자동 커밋
-tests/                   60 passed
+docs/index.html          정적 대시보드 (GitHub Pages)
+.github/workflows/track.yml  하루 2회 cron + data/state/docs 자동 커밋
+tests/                   74 passed
 ```
 
 ## 코드 스타일
@@ -120,7 +127,8 @@ tests/                   60 passed
 - [x] **P-2** GitHub Actions cron + 자동 커밋 + 텔레그램 — 07:05 / 19:05 KST
 - [x] **P-1c** Best flights 섹션 수집 누락 수정 — 최저가 23만원 되찾음
 - [x] **P-4** percentile "지금 살까" 판정 — Google 60일 곡선으로 오늘부터 가능
-- [ ] **P-3** 정적 대시보드 (히트맵 + 가격 곡선) + Pages
+- [x] **P-3** 정적 대시보드 — `docs/index.html`. **Pages 활성화는 사용자 몫**
+      (repo Settings → Pages → `main` / `/docs`)
 - [ ] **P-1b** 분리 발권 조합 — **전제 확인 먼저.** 위 "존재 이유" 정정 참조
 
 상세 계획은 `.claude/plans/flight-radar.md`.

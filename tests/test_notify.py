@@ -5,11 +5,11 @@ from datetime import date
 from conftest import make_insight, make_quote
 
 from flight_radar.alert import Alert
-from flight_radar.insight import read_market
+from flight_radar.insight import cheapest_by_day, rank_today
 from flight_radar.notify import format_alert
 
 TODAY = date(2026, 8, 21)
-AT_ITS_LOW = read_market([make_insight((1_800_000,) * 20 + (1_100_000,))])
+AT_ITS_LOW = rank_today(cheapest_by_day([make_insight((1_800_000,) * 20 + (1_100_000,)).curve_krw]))
 
 
 def test_the_message_says_where_today_sits_and_how_low_it_has_been():

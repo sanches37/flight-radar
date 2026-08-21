@@ -35,6 +35,12 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: uv run track --provider google_flights
 
+      # Renders from what is on disk, so a half-finished collection still
+      # produces a page - it just says so in the health line.
+      - name: Render the dashboard
+        if: always()
+        run: uv run dashboard
+
       # Always: a run that died halfway still wrote real prices to disk, and
       # throwing them away would leave a hole in the history for no reason.
       - name: Commit what was collected
@@ -44,8 +50,8 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           # mkdir so a run that died before writing anything fails on its own
           # error, not on an "unknown pathspec" from this step.
-          mkdir -p data state
-          git add data state
+          mkdir -p data state docs
+          git add data state docs
           if git diff --quiet --cached; then
             echo "nothing new collected"
             exit 0
