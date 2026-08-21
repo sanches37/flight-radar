@@ -20,7 +20,7 @@ routes:
     split_hubs: [CDG, AMS, IST, DOH]
     constraints:
       max_stops: 1
-      max_duration_minutes: 1200
+      max_duration_minutes: 1380
       exclude_carriers: []
 
   - id: icn-opo
@@ -34,5 +34,5 @@ routes:
     split_hubs: [CDG, AMS, IST, DOH]
     constraints:
       max_stops: 1
-      max_duration_minutes: 1200
+      max_duration_minutes: 1380
       exclude_carriers: []

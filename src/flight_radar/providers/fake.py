@@ -66,6 +66,9 @@ class FakeProvider:
             Leg(route.origin, hub, depart_date, long_haul, hub_carrier),
             Leg(hub, route.destination, depart_date + timedelta(days=1), short_hop, "FR"),
         )
+        # A nonstop long-haul leaves the self-transfer as the only stop; some
+        # hubs need a connection on the way in, which adds a second.
+        long_haul_stops = seed % 2
         return Quote(
             route_id=route.id,
             provider=self.name,
@@ -75,8 +78,8 @@ class FakeProvider:
             depart_date=depart_date,
             return_date=return_date,
             price_krw=long_haul + short_hop,
-            stops=2 + seed % 2,
-            duration_minutes=22 * 60 + seed % (12 * 60),
+            stops=1 + long_haul_stops,
+            duration_minutes=(16 + 4 * long_haul_stops) * 60 + seed % (8 * 60),
             carriers=(hub_carrier, "FR"),
             observed_at=observed_at,
             legs=legs,
