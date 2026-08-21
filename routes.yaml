@@ -3,7 +3,8 @@
 # window       : 여행 전체가 들어가야 하는 바깥 창.
 #                depart_from 이후 출발, return_by 이전 귀국.
 # trip_nights  : 후보 박수. 창을 벗어나는 조합은 자동으로 빠집니다
-# target_price_krw : 이 값 이하면 무조건 알림
+# target_price_krw : 이 값 이하면 무조건 알림. 실제 시장가보다 높게 잡으면
+#                이 조건이 항상 이겨서 percentile 판정이 발사되지 않습니다
 # split_hubs   : 분리 발권 비교에 쓸 유럽 허브 (인천→허브 + 허브→목적지)
 # constraints  : 알림 자격 필터. 수집은 전부 하고 알림에서만 걸러냅니다
 
@@ -15,7 +16,7 @@ routes:
       depart_from: 2026-10-05
       return_by: 2026-10-16
     trip_nights: [7, 8, 9, 10, 11]
-    target_price_krw: 1400000
+    target_price_krw: 1050000
     split_hubs: [CDG, AMS, IST, DOH]
     constraints:
       max_stops: 1
@@ -29,7 +30,7 @@ routes:
       depart_from: 2026-10-05
       return_by: 2026-10-16
     trip_nights: [7, 8, 9, 10, 11]
-    target_price_krw: 1400000
+    target_price_krw: 1150000
     split_hubs: [CDG, AMS, IST, DOH]
     constraints:
       max_stops: 1
