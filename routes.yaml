@@ -1,21 +1,20 @@
 # 감시할 노선. 이 파일만 고치면 추적 대상이 바뀝니다.
 #
-# depart_window : 출발일 후보 범위 (±3일 유연 → 7일 창)
-# trip_nights   : 여행 박수 후보. 여러 개면 조합이 늘어납니다
+# window       : 여행 전체가 들어가야 하는 바깥 창.
+#                depart_from 이후 출발, return_by 이전 귀국.
+# trip_nights  : 후보 박수. 창을 벗어나는 조합은 자동으로 빠집니다
 # target_price_krw : 이 값 이하면 무조건 알림
-# split_hubs    : 분리 발권 비교에 쓸 유럽 허브 (인천→허브 + 허브→목적지)
-# constraints   : 알림 자격 필터. 수집은 전부 하고 알림에서만 걸러냅니다
-#
-# TODO: depart_window 를 실제 출발 예정일 ±3일로 교체할 것 (현재는 자리표시자)
+# split_hubs   : 분리 발권 비교에 쓸 유럽 허브 (인천→허브 + 허브→목적지)
+# constraints  : 알림 자격 필터. 수집은 전부 하고 알림에서만 걸러냅니다
 
 routes:
   - id: icn-lis
     origin: ICN
     destination: LIS
-    depart_window:
-      from: 2026-10-12
-      to: 2026-10-18
-    trip_nights: [9, 10, 11]
+    window:
+      depart_from: 2026-10-05
+      return_by: 2026-10-16
+    trip_nights: [7, 8, 9, 10, 11]
     target_price_krw: 1400000
     split_hubs: [CDG, AMS, IST, DOH]
     constraints:
@@ -26,10 +25,10 @@ routes:
   - id: icn-opo
     origin: ICN
     destination: OPO
-    depart_window:
-      from: 2026-10-12
-      to: 2026-10-18
-    trip_nights: [9, 10, 11]
+    window:
+      depart_from: 2026-10-05
+      return_by: 2026-10-16
+    trip_nights: [7, 8, 9, 10, 11]
     target_price_krw: 1400000
     split_hubs: [CDG, AMS, IST, DOH]
     constraints:

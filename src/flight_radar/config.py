@@ -29,21 +29,25 @@ class Route:
     origin: str
     destination: str
     depart_from: date
-    depart_to: date
+    return_by: date
     trip_nights: tuple[int, ...]
     target_price_krw: int
     constraints: Constraints
     split_hubs: tuple[str, ...] = ()
 
     def date_pairs(self) -> list[tuple[date, date]]:
-        """Every (depart, return) combination this route watches."""
-        span = (self.depart_to - self.depart_from).days
-        departures = [self.depart_from + timedelta(days=offset) for offset in range(span + 1)]
-        return [
-            (departure, departure + timedelta(days=nights))
-            for departure in departures
-            for nights in self.trip_nights
-        ]
+        """Every (depart, return) pair that fits inside the travel window."""
+        pairs: list[tuple[date, date]] = []
+        departure = self.depart_from
+
+        while departure + timedelta(days=min(self.trip_nights)) <= self.return_by:
+            for nights in sorted(self.trip_nights):
+                arrival = departure + timedelta(days=nights)
+                if arrival <= self.return_by:
+                    pairs.append((departure, arrival))
+            departure += timedelta(days=1)
+
+        return pairs
 
 
 def load_routes(path: Path) -> list[Route]:
@@ -58,17 +62,24 @@ def load_routes(path: Path) -> list[Route]:
 
 
 def _parse_route(entry: dict) -> Route:
-    window = entry["depart_window"]
+    window = entry["window"]
     trip_nights = tuple(entry["trip_nights"])
     if not trip_nights:
         raise ValueError(f"route {entry['id']}: trip_nights must not be empty")
+
+    depart_from = _as_date(window["depart_from"])
+    return_by = _as_date(window["return_by"])
+    if depart_from + timedelta(days=min(trip_nights)) > return_by:
+        raise ValueError(
+            f"route {entry['id']}: window is too short for the shortest trip"
+        )
 
     return Route(
         id=entry["id"],
         origin=entry["origin"],
         destination=entry["destination"],
-        depart_from=_as_date(window["from"]),
-        depart_to=_as_date(window["to"]),
+        depart_from=depart_from,
+        return_by=return_by,
         trip_nights=trip_nights,
         target_price_krw=entry["target_price_krw"],
         constraints=_parse_constraints(entry.get("constraints", {})),

@@ -11,11 +11,21 @@ KST = timezone.utc
 NOW = datetime(2026, 8, 21, 9, 0, tzinfo=KST)
 
 
-def test_date_pairs_cover_window_times_night_options(route):
+def test_date_pairs_stay_inside_the_travel_window(route):
     pairs = route.date_pairs()
 
-    assert len(pairs) == 3
-    assert pairs[0] == (date(2026, 10, 12), date(2026, 10, 22))
+    assert pairs[0] == (date(2026, 10, 5), date(2026, 10, 15))
+    assert all(depart >= route.depart_from for depart, _ in pairs)
+    assert all(arrive <= route.return_by for _, arrive in pairs)
+
+
+def test_date_pairs_drop_combinations_that_overrun_the_window(route):
+    """Oct 5 fits both 10 and 11 nights; Oct 6 fits only 10."""
+    pairs = route.date_pairs()
+
+    assert (date(2026, 10, 5), date(2026, 10, 16)) in pairs
+    assert (date(2026, 10, 6), date(2026, 10, 17)) not in pairs
+    assert (date(2026, 10, 6), date(2026, 10, 16)) in pairs
 
 
 def test_routes_yaml_parses():
@@ -23,6 +33,7 @@ def test_routes_yaml_parses():
 
     assert {route.id for route in routes} == {"icn-lis", "icn-opo"}
     assert all(route.split_hubs for route in routes)
+    assert all(route.date_pairs() for route in routes)
 
 
 def test_collect_returns_through_and_split_itineraries(route):
