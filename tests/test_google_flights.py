@@ -11,7 +11,7 @@ from datetime import date, datetime, timezone
 from fast_flights import ResultList
 from fast_flights.model import Airline, Airport, Flights, JsMetadata, SimpleDatetime, SingleFlight
 
-from flight_radar.providers.google_flights import _parse, quotes_from
+from flight_radar.providers.google_flights import _insight, _parse, _payload, quotes_from
 
 KST = timezone.utc
 NOW = datetime(2026, 8, 21, 9, 0, tzinfo=KST)
@@ -151,37 +151,52 @@ def _payload_itinerary(price: int | None) -> list:
     return [flight, [*price_slot, "token"]]
 
 
-def _script(*itineraries: list, best: tuple = ()) -> str:
+# 2026-08-19T00:00Z, so the sample curve ends on the day the tests call today.
+_DAY_ZERO_MS = 1_787_097_600_000
+
+
+def _insights_block(curve: tuple[int, ...]) -> list:
+    """Google's price-insights block, at the indices the curve reader uses."""
+    block = [None] * 11
+    block[10] = [[[_DAY_ZERO_MS + day * 86_400_000, price] for day, price in enumerate(curve)]]
+    return block
+
+
+def _script(*itineraries: list, best: tuple = (), curve: tuple = ()) -> str:
     """Google's payload: best departing flights at [2], the rest at [3]."""
     payload = [None] * 8
     payload[2] = [list(best)] if best else None
     payload[3] = [list(itineraries)]
+    payload[5] = _insights_block(curve) if curve else None
     payload[7] = [None, [[], [["LO", "LOT"]]]]
     return "AF_initDataCallback({key: 'ds:1', data:" + json.dumps(payload) + ",});"
+
+
+def _payload_of(script: str) -> list:
+    return _payload(f"<script class='ds:1'>{script}</script>")
 
 
 def test_one_unpriced_itinerary_does_not_take_the_whole_page_down():
     """fast-flights 3.1.0 raises IndexError on these and loses every result."""
     script = _script(_payload_itinerary(1_400_000), _payload_itinerary(None))
 
-    results = _parse(f"<script class='ds:1'>{script}</script>")
+    results = _parse(_payload_of(script))
 
     assert [result.price for result in results] == [1_400_000]
 
 
 def test_a_response_with_no_itineraries_at_all_parses_to_nothing():
-    payload = json.loads(_script().split("data:", 1)[1].rsplit(",", 1)[0])
+    payload = _payload_of(_script())
     payload[3] = [None]
-    script = "AF_initDataCallback({data:" + json.dumps(payload) + ",});"
 
-    assert _parse(f"<script class='ds:1'>{script}</script>") == []
+    assert _parse(payload) == []
 
 
 def test_the_best_departing_flights_list_is_collected_too():
     """The cheap fares live in Google's first list, which fast-flights skips."""
     script = _script(_payload_itinerary(1_388_300), best=(_payload_itinerary(1_156_200),))
 
-    results = _parse(f"<script class='ds:1'>{script}</script>")
+    results = _parse(_payload_of(script))
 
     assert sorted(result.price for result in results) == [1_156_200, 1_388_300]
 
@@ -189,6 +204,38 @@ def test_the_best_departing_flights_list_is_collected_too():
 def test_an_unpriced_entry_in_the_best_list_is_dropped_like_any_other():
     script = _script(_payload_itinerary(1_388_300), best=(_payload_itinerary(None),))
 
-    results = _parse(f"<script class='ds:1'>{script}</script>")
+    results = _parse(_payload_of(script))
 
     assert [result.price for result in results] == [1_388_300]
+
+
+CURVE = (1_500_000, 1_400_000, 1_120_100)
+CURVE_BY_DAY = {
+    date(2026, 8, 19): 1_500_000,
+    date(2026, 8, 20): 1_400_000,
+    date(2026, 8, 21): 1_120_100,
+}
+
+
+def test_the_daily_price_curve_rides_along_with_the_search_response():
+    """Sixty days of history for this date pair, at no extra request."""
+    payload = _payload_of(_script(_payload_itinerary(1_120_100), curve=CURVE))
+
+    insight = _insight(payload, *DATES)
+
+    assert insight.curve_krw == CURVE_BY_DAY
+    assert (insight.depart_date, insight.return_date) == DATES
+
+
+def test_a_response_without_the_curve_yields_no_insight_instead_of_failing():
+    """Quotes must keep flowing when only the insights block moves."""
+    payload = _payload_of(_script(_payload_itinerary(1_120_100)))
+
+    assert _insight(payload, *DATES) is None
+
+
+def test_a_curve_of_an_unexpected_shape_yields_no_insight():
+    payload = _payload_of(_script(_payload_itinerary(1_120_100), curve=CURVE))
+    payload[5][10] = [["not a point"]]
+
+    assert _insight(payload, *DATES) is None

@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from collections.abc import Sequence
 from datetime import date, timedelta
 from pathlib import Path
 
 from flight_radar.config import Route
-from flight_radar.models import Quote
+from flight_radar.insight import Market, read_market
+from flight_radar.models import PriceInsight, Quote
 
 HISTORY_DAYS = 30
 DROP_RATIO = 0.90
+LOW_PERCENTILE = 15.0
 RENOTIFY_AFTER_DAYS = 7
 
 
@@ -20,9 +23,16 @@ class Alert:
     quote: Quote
     reason: str
     baseline_krw: int | None
+    market: Market | None = None
 
 
-def find_alerts(route: Route, fresh: list[Quote], history: list[Quote], today: date) -> list[Alert]:
+def find_alerts(
+    route: Route,
+    fresh: list[Quote],
+    history: list[Quote],
+    today: date,
+    insights: Sequence[PriceInsight] = (),
+) -> list[Alert]:
     """Alert on the single best eligible quote per route, not on every match.
 
     Alerting per quote would fire dozens of times for one price drop, and an
@@ -34,11 +44,14 @@ def find_alerts(route: Route, fresh: list[Quote], history: list[Quote], today: d
 
     best = min(eligible, key=lambda quote: quote.price_krw)
     baseline = _recent_low(route, history, today)
+    market = read_market(insights)
 
     if best.price_krw <= route.target_price_krw:
-        return [Alert(best, "target", baseline)]
+        return [Alert(best, "target", baseline, market)]
+    if market is not None and market.percentile <= LOW_PERCENTILE:
+        return [Alert(best, "percentile", baseline, market)]
     if baseline is not None and best.price_krw <= baseline * DROP_RATIO:
-        return [Alert(best, "drop", baseline)]
+        return [Alert(best, "drop", baseline, market)]
     return []
 
 

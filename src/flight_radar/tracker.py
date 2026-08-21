@@ -8,7 +8,7 @@ from pathlib import Path
 
 from flight_radar.alert import HISTORY_DAYS, Alert, find_alerts, suppress_repeats
 from flight_radar.config import Route
-from flight_radar.models import Quote
+from flight_radar.models import Observation, Quote
 from flight_radar.providers import Provider
 from flight_radar.store import append, read_since
 
@@ -38,21 +38,27 @@ def run(
     collected = 0
 
     for route in routes:
-        fresh = collect(route, provider, observed_at)
-        append(paths.data, fresh)
-        collected += len(fresh)
+        observed = collect(route, provider, observed_at)
+        append(paths.data, observed.quotes)
+        collected += len(observed.quotes)
 
         history = _history_before(paths.data, route, observed_at)
-        alerts.extend(find_alerts(route, fresh, history, observed_at.date()))
+        alerts.extend(
+            find_alerts(
+                route, observed.quotes, history, observed_at.date(), observed.insights
+            )
+        )
 
     return RunResult(suppress_repeats(alerts, paths.state, observed_at.date()), collected)
 
 
-def collect(route: Route, provider: Provider, observed_at: datetime) -> list[Quote]:
-    quotes: list[Quote] = []
+def collect(route: Route, provider: Provider, observed_at: datetime) -> Observation:
+    observed = Observation()
     for depart_date, return_date in route.date_pairs():
-        quotes.extend(provider.fetch(route, depart_date, return_date, observed_at))
-    return quotes
+        seen = provider.fetch(route, depart_date, return_date, observed_at)
+        observed.quotes.extend(seen.quotes)
+        observed.insights.extend(seen.insights)
+    return observed
 
 
 def _history_before(data_root: Path, route: Route, observed_at: datetime) -> list[Quote]:

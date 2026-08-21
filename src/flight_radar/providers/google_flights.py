@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import sys
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from fast_flights import FlightQuery, Passengers, ResultList, create_query, fetch_flights_html
 from fast_flights.model import SimpleDatetime, SingleFlight
@@ -18,7 +18,7 @@ from fast_flights.parser import parse_js
 from selectolax.lexbor import LexborHTMLParser
 
 from flight_radar.config import Route
-from flight_radar.models import Quote
+from flight_radar.models import Observation, PriceInsight, Quote
 
 PAUSE_SECONDS = 3.0
 
@@ -28,13 +28,14 @@ class GoogleFlightsProvider:
 
     def fetch(
         self, route: Route, depart_date: date, return_date: date, observed_at: datetime
-    ) -> list[Quote]:
+    ) -> Observation:
         # Back-to-back scrapes get blocked, so every request waits its turn.
         time.sleep(PAUSE_SECONDS)
 
         try:
             html = fetch_flights_html(_query(route, depart_date, return_date))
-            results = _parse(html)
+            payload = _payload(html)
+            results = _parse(payload)
         except Exception as error:
             # Never fail silently. A provider that quietly returns nothing
             # looks exactly like a market with no flights, and P-2 has to be
@@ -43,9 +44,21 @@ class GoogleFlightsProvider:
                 f"{self.name}: {route.id} {depart_date}..{return_date} failed: {error!r}",
                 file=sys.stderr,
             )
-            return []
+            return Observation()
 
-        return quotes_from(results, route, (depart_date, return_date), observed_at)
+        insight = _insight(payload, depart_date, return_date)
+        if insight is None:
+            # Losing only the curve leaves quotes flowing, so health.py never
+            # sees it. Say so here or the percentile alert dies in silence.
+            print(
+                f"{self.name}: {route.id} {depart_date}..{return_date} carried no price curve",
+                file=sys.stderr,
+            )
+
+        return Observation(
+            quotes=quotes_from(results, route, (depart_date, return_date), observed_at),
+            insights=[insight] if insight else [],
+        )
 
 
 def quotes_from(
@@ -81,7 +94,16 @@ def quotes_from(
     return sorted(quotes, key=lambda quote: quote.price_krw)
 
 
-def _parse(html: str) -> ResultList:
+def _payload(html: str) -> list:
+    """Google's search payload, lifted out of the inline script that carries it."""
+    script = LexborHTMLParser(html).css_first(r"script.ds\:1")
+    if script is None:
+        raise ValueError("response carried no flight payload")
+
+    return json.loads(script.text().split("data:", 1)[1].rsplit(",", 1)[0])
+
+
+def _parse(payload: list) -> ResultList:
     """Parse both result lists, minus the itineraries Google prices as unavailable.
 
     Two fast-flights 3.1.0 problems are worked around here.
@@ -95,11 +117,6 @@ def _parse(html: str) -> ResultList:
     one price-less entry raises IndexError and takes the whole page down with
     it. Those are useless to a price tracker anyway, so they go before parsing.
     """
-    script = LexborHTMLParser(html).css_first(r"script.ds\:1")
-    if script is None:
-        raise ValueError("response carried no flight payload")
-
-    payload = json.loads(script.text().split("data:", 1)[1].rsplit(",", 1)[0])
     payload[3][0] = [entry for entry in _itineraries(payload) if entry[1][0]]
 
     return parse_js("data:" + json.dumps(payload) + ",")
@@ -112,6 +129,35 @@ def _itineraries(payload: list) -> list:
         if section:
             entries.extend(section[0] or ())
     return entries
+
+
+def _insight(payload: list, depart_date: date, return_date: date) -> PriceInsight | None:
+    """Google's daily lowest-price curve for this date pair, if it is there.
+
+    Sixty-one daily points ending today, measured identical to our own
+    cheapest unfiltered quote on every watched date pair. Positional indices
+    into a private payload are exactly as fragile as they look, so anything
+    unexpected returns None and the caller warns rather than losing the run.
+    """
+    try:
+        block = payload[5]
+        curve = block[10][0]
+        return PriceInsight(
+            depart_date=depart_date,
+            return_date=return_date,
+            curve_krw={_day(point[0]): int(point[1]) for point in curve},
+        )
+    except (IndexError, KeyError, TypeError, ValueError):
+        return None
+
+
+def _day(unix_ms: int) -> date:
+    """A stable label for one curve point.
+
+    Only used to line the watched date pairs up with each other, never shown,
+    so UTC is chosen to avoid guessing which zone Google stamped them in.
+    """
+    return datetime.fromtimestamp(unix_ms / 1000, timezone.utc).date()
 
 
 def _query(route: Route, depart_date: date, return_date: date):

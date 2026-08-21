@@ -1,6 +1,6 @@
 from datetime import date
 
-from conftest import make_quote
+from conftest import make_insight, make_quote
 
 from flight_radar.alert import find_alerts, record_sent, suppress_repeats
 
@@ -101,3 +101,60 @@ def test_undelivered_alert_stays_eligible(tmp_path, route):
 
     assert len(suppress_repeats(alerts, state, TODAY)) == 1
     assert len(suppress_repeats(alerts, state, TODAY)) == 1
+
+
+ABOVE_TARGET = 1_500_000
+AT_ITS_LOW = make_insight((1_800_000,) * 20 + (1_100_000,))
+MID_RANGE = make_insight((1_000_000,) * 10 + (1_800_000,) * 10 + (1_400_000,))
+
+
+def test_alerts_when_the_date_pair_sits_at_the_bottom_of_its_own_history(route):
+    fresh = [make_quote(ABOVE_TARGET, TODAY)]
+
+    alerts = find_alerts(route, fresh, [], TODAY, insights=[AT_ITS_LOW])
+
+    assert [alert.reason for alert in alerts] == ["percentile"]
+    assert alerts[0].market.percentile == 0.0
+
+
+def test_a_typical_price_is_not_a_buy_signal(route):
+    fresh = [make_quote(ABOVE_TARGET, TODAY)]
+
+    assert find_alerts(route, fresh, [], TODAY, insights=[MID_RANGE]) == []
+
+
+def test_reaching_target_outranks_the_percentile_signal(route):
+    fresh = [make_quote(1_350_000, TODAY)]
+
+    alerts = find_alerts(route, fresh, [], TODAY, insights=[AT_ITS_LOW])
+
+    assert [alert.reason for alert in alerts] == ["target"]
+    assert alerts[0].market.percentile == 0.0
+
+
+def test_the_percentile_signal_outranks_a_ten_percent_drop(route):
+    """Sixty days of daily history says more than a thirty-day minimum."""
+    history = [make_quote(1_700_000, date(2026, 8, 10))]
+    fresh = [make_quote(ABOVE_TARGET, TODAY)]
+
+    alerts = find_alerts(route, fresh, history, TODAY, insights=[AT_ITS_LOW])
+
+    assert [alert.reason for alert in alerts] == ["percentile"]
+
+
+def test_a_cheaper_date_pair_cancels_another_pairs_record_low(route):
+    """Every watched pair is a candidate, so the cheapest one sets the bar."""
+    cheaper_until_today = make_insight(
+        (900_000,) * 20 + (1_500_000,), return_date=date(2026, 10, 16)
+    )
+    fresh = [make_quote(ABOVE_TARGET, TODAY)]
+
+    assert find_alerts(route, fresh, [], TODAY, insights=[AT_ITS_LOW, cheaper_until_today]) == []
+
+
+def test_alerting_still_works_when_no_curve_came_back(route):
+    """Google may drop the insights block; target and drop must survive it."""
+    alerts = find_alerts(route, [make_quote(1_350_000, TODAY)], [], TODAY)
+
+    assert [alert.reason for alert in alerts] == ["target"]
+    assert alerts[0].market is None

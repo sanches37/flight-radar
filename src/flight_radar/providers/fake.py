@@ -11,11 +11,13 @@ import hashlib
 from datetime import date, datetime, timedelta
 
 from flight_radar.config import Route
-from flight_radar.models import Leg, Quote
+from flight_radar.models import Leg, Observation, PriceInsight, Quote
 
 _BASE_PRICE_KRW = 1_500_000
 _SWING_KRW = 700_000
 _HUB_CARRIERS = {"CDG": "AF", "AMS": "KL", "IST": "TK", "DOH": "QR", "DXB": "EK", "HEL": "AY"}
+# Google hands back sixty days of history plus today; match that shape.
+_CURVE_POINTS = 61
 
 
 class FakeProvider:
@@ -23,13 +25,31 @@ class FakeProvider:
 
     def fetch(
         self, route: Route, depart_date: date, return_date: date, observed_at: datetime
-    ) -> list[Quote]:
+    ) -> Observation:
         through = self._through_quote(route, depart_date, return_date, observed_at)
         splits = [
             self._split_quote(route, hub, depart_date, return_date, observed_at)
             for hub in route.split_hubs
         ]
-        return sorted([through, *splits], key=lambda quote: quote.price_krw)
+        return Observation(
+            quotes=sorted([through, *splits], key=lambda quote: quote.price_krw),
+            insights=[self._insight(route, depart_date, return_date, observed_at)],
+        )
+
+    def _insight(
+        self, route: Route, depart_date: date, return_date: date, observed_at: datetime
+    ) -> PriceInsight:
+        today = observed_at.date()
+        curve = {
+            today - timedelta(days=age): _BASE_PRICE_KRW
+            + _seed(route.id, depart_date, return_date, today, f"curve{age}") % _SWING_KRW
+            for age in range(_CURVE_POINTS)
+        }
+        return PriceInsight(
+            depart_date=depart_date,
+            return_date=return_date,
+            curve_krw=curve,
+        )
 
     def _through_quote(
         self, route: Route, depart_date: date, return_date: date, observed_at: datetime

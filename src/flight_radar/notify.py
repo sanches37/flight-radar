@@ -40,14 +40,33 @@ def format_alert(alert: Alert) -> str:
     routing = f"{'/'.join(quote.carriers)} · 경유 {quote.stops}회 · {quote.duration_minutes // 60}시간"
 
     lines = [headline, dates, routing, _why(alert)]
+    lines.extend(_market_lines(alert))
     if quote.itinerary_type == "split":
         lines.append("분리 발권 " + " + ".join(f"{leg.price_krw:,}" for leg in quote.legs))
     return "\n".join(lines)
 
 
+def _market_lines(alert: Alert) -> list[str]:
+    """How today compares with the last sixty days of the same measure.
+
+    Google's curve ignores the stop and duration limits, so when its price
+    differs from the fare we would actually book, name which one is ranked.
+    """
+    market = alert.market
+    if market is None:
+        return []
+
+    ranking = f"최근 {market.days}일 중 하위 {market.percentile:.0f}%"
+    if market.today_krw != alert.quote.price_krw:
+        ranking += f" (무제약 최저 {market.today_krw:,}원 기준)"
+    return [ranking, f"그동안 최저 {market.low_krw:,}원"]
+
+
 def _why(alert: Alert) -> str:
     if alert.reason == "target":
         return "목표가 도달"
+    if alert.reason == "percentile":
+        return "저점 구간 — 매수 신호"
     if alert.baseline_krw is None:
         return "가격 하락"
     saved = alert.baseline_krw - alert.quote.price_krw

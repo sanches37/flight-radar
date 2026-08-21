@@ -1,9 +1,9 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
 from flight_radar.config import Constraints, Route
-from flight_radar.models import Quote
+from flight_radar.models import PriceInsight, Quote
 
 KST = timezone.utc
 
@@ -39,3 +39,17 @@ def make_quote(price: int, observed: date, **overrides) -> Quote:
         observed_at=datetime.combine(observed, datetime.min.time(), tzinfo=KST),
     )
     return Quote(**{**defaults, **overrides})
+
+
+def make_insight(curve: tuple[int, ...], **overrides) -> PriceInsight:
+    """A curve given oldest first, ending on the day the tests call today."""
+    last = date(2026, 8, 21)
+    defaults = dict(
+        depart_date=date(2026, 10, 5),
+        return_date=date(2026, 10, 15),
+        curve_krw={
+            last - timedelta(days=len(curve) - 1 - age): price
+            for age, price in enumerate(curve)
+        },
+    )
+    return PriceInsight(**{**defaults, **overrides})

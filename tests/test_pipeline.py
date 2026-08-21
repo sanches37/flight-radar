@@ -40,7 +40,7 @@ def test_routes_yaml_parses():
 
 
 def test_collect_returns_through_and_split_itineraries(route):
-    quotes = collect(route, FakeProvider(), NOW)
+    quotes = collect(route, FakeProvider(), NOW).quotes
 
     kinds = {quote.itinerary_type for quote in quotes}
     assert kinds == {"through", "split"}
@@ -48,10 +48,18 @@ def test_collect_returns_through_and_split_itineraries(route):
 
 
 def test_split_quote_price_equals_sum_of_legs(route):
-    quotes = collect(route, FakeProvider(), NOW)
+    quotes = collect(route, FakeProvider(), NOW).quotes
 
     for quote in (q for q in quotes if q.itinerary_type == "split"):
         assert quote.price_krw == sum(leg.price_krw for leg in quote.legs)
+
+
+def test_collect_gathers_one_price_curve_per_date_pair(route):
+    """The curve rides on the same response, so every pair should bring one."""
+    insights = collect(route, FakeProvider(), NOW).insights
+
+    assert len(insights) == len(route.date_pairs())
+    assert {(i.depart_date, i.return_date) for i in insights} == set(route.date_pairs())
 
 
 def test_store_roundtrip_preserves_quote(tmp_path):
