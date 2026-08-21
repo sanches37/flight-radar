@@ -82,23 +82,36 @@ def quotes_from(
 
 
 def _parse(html: str) -> ResultList:
-    """Parse the response, minus the itineraries Google prices as unavailable.
+    """Parse both result lists, minus the itineraries Google prices as unavailable.
 
-    fast-flights 3.1.0 reads every itinerary's price unconditionally
-    (parser.py:77), so one price-less entry raises IndexError and takes the
-    whole page down with it - eight good itineraries lost to one bad one.
-    They are useless to a price tracker anyway, so they go before parsing.
+    Two fast-flights 3.1.0 problems are worked around here.
+
+    It reads only Google's second list. Google splits results into "Best
+    departing flights" and "Other departing flights", and the cheap fares sit
+    in the first one: on a measured ICN-LIS query the best list opened at
+    1,156,200 KRW while the other list's cheapest was 1,388,300.
+
+    It also reads every itinerary's price unconditionally (parser.py:77), so
+    one price-less entry raises IndexError and takes the whole page down with
+    it. Those are useless to a price tracker anyway, so they go before parsing.
     """
     script = LexborHTMLParser(html).css_first(r"script.ds\:1")
     if script is None:
         raise ValueError("response carried no flight payload")
 
     payload = json.loads(script.text().split("data:", 1)[1].rsplit(",", 1)[0])
-    itineraries = payload[3][0]
-    if itineraries is not None:
-        payload[3][0] = [entry for entry in itineraries if entry[1][0]]
+    payload[3][0] = [entry for entry in _itineraries(payload) if entry[1][0]]
 
     return parse_js("data:" + json.dumps(payload) + ",")
+
+
+def _itineraries(payload: list) -> list:
+    """Google's two result lists as one, best first then the rest."""
+    entries = []
+    for section in (payload[2], payload[3]):
+        if section:
+            entries.extend(section[0] or ())
+    return entries
 
 
 def _query(route: Route, depart_date: date, return_date: date):

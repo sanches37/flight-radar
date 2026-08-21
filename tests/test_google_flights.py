@@ -151,8 +151,10 @@ def _payload_itinerary(price: int | None) -> list:
     return [flight, [*price_slot, "token"]]
 
 
-def _script(*itineraries: list) -> str:
+def _script(*itineraries: list, best: tuple = ()) -> str:
+    """Google's payload: best departing flights at [2], the rest at [3]."""
     payload = [None] * 8
+    payload[2] = [list(best)] if best else None
     payload[3] = [list(itineraries)]
     payload[7] = [None, [[], [["LO", "LOT"]]]]
     return "AF_initDataCallback({key: 'ds:1', data:" + json.dumps(payload) + ",});"
@@ -173,3 +175,20 @@ def test_a_response_with_no_itineraries_at_all_parses_to_nothing():
     script = "AF_initDataCallback({data:" + json.dumps(payload) + ",});"
 
     assert _parse(f"<script class='ds:1'>{script}</script>") == []
+
+
+def test_the_best_departing_flights_list_is_collected_too():
+    """The cheap fares live in Google's first list, which fast-flights skips."""
+    script = _script(_payload_itinerary(1_388_300), best=(_payload_itinerary(1_156_200),))
+
+    results = _parse(f"<script class='ds:1'>{script}</script>")
+
+    assert sorted(result.price for result in results) == [1_156_200, 1_388_300]
+
+
+def test_an_unpriced_entry_in_the_best_list_is_dropped_like_any_other():
+    script = _script(_payload_itinerary(1_388_300), best=(_payload_itinerary(None),))
+
+    results = _parse(f"<script class='ds:1'>{script}</script>")
+
+    assert [result.price for result in results] == [1_388_300]
