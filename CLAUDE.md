@@ -22,8 +22,9 @@ Google Flights 트래킹도 **같이 켜두는 것이 전제**다. 이 도구가
 ```bash
 uv sync
 uv run pytest                 # 테스트
-uv run track --provider fake  # 한 사이클
-uv run track --dry-run        # 수집·저장만, 알림 없음
+uv run track --provider google_flights            # 실제 수집 한 사이클 (~2분)
+uv run track --provider google_flights --dry-run  # 수집·저장만, 알림 없음
+uv run track --provider fake                      # 네트워크 없이 파이프라인만
 ```
 
 추적 대상 변경은 `routes.yaml` 하나만 고치면 된다.
@@ -43,6 +44,10 @@ diff가 한 줄씩만 늘고, git 히스토리가 그대로 백업.
 **알림은 노선당 최저가 1건.** 견적마다 보내면 한 번의 하락에 수십 건이 발사되고,
 그렇게 시끄러운 알림은 결국 꺼진다. 같은 노선·출발일·5만원대는 7일간 재알림 금지.
 
+**왕복 가격은 가는 편에 붙는다.** Google은 왕복 총액을 아웃바운드 여정에 매기고
+귀국 여정은 응답에 없다. 그래서 `stops`/`duration_minutes`/`carriers`는 **가는 편 기준**이고
+`max_stops` 제약도 가는 편에만 걸린다. Google 자체 동작이라 우회 불가.
+
 **baseline에서 제약 위반 견적 제외.** 싼 3-경유 운임이 기준선이 되면
 정작 탈 만한 운임이 영원히 "비싸다"로 판정된다. 테스트로 고정돼 있다.
 
@@ -52,6 +57,7 @@ diff가 한 줄씩만 늘고, git 히스토리가 그대로 백업.
   진입점(`cli.py`) 1곳만 예외.
 - fake 데이터를 `data/quotes/`에 커밋 금지. 실제 baseline이 오염된다.
 - provider가 constraints를 보고 필터링하지 말 것 (위 "수집은 전부" 참조).
+  `fast_flights.FlightQuery`에 `max_stops`/`max_duration_minutes`가 있지만 쓰지 않는다.
 
 ## 구조
 
@@ -62,12 +68,13 @@ src/flight_radar/
   models.py              Quote / Leg
   providers/base.py      Provider 프로토콜
   providers/fake.py      결정론적 fake (네트워크 없이 테스트)
+  providers/google_flights.py  fast-flights 스크레이핑 (통합권)
   store.py               append-only JSONL 읽기/쓰기
   alert.py               목표가·급락 판정 + 중복 차단
   notify.py              텔레그램 (자격증명 없으면 stdout)
   tracker.py             한 사이클 조립
   cli.py                 진입점
-tests/                   20 passed
+tests/                   30 passed
 ```
 
 ## 코드 스타일
@@ -80,8 +87,9 @@ tests/                   20 passed
 ## 진행 상황
 
 - [x] **P-0** 파이프라인 + fake provider + 테스트 20개 — 커밋 `268c8cb`까지
-- [ ] **P-1** fast-flights 연결  ← **다음**
-- [ ] **P-2** GitHub Actions cron + 자동 커밋 + 텔레그램
+- [x] **P-1a** fast-flights 통합권 연결 — 실제 KRW 가격 수집 중
+- [ ] **P-2** GitHub Actions cron + 자동 커밋 + 텔레그램  ← **다음**
+- [ ] **P-1b** 분리 발권 조합 (P-2 이후. 수집 시작이 더 급함)
 - [ ] **P-3** 정적 대시보드 (히트맵 + 가격 곡선) + Pages
 - [ ] **P-4** percentile "지금 살까" 판정
 

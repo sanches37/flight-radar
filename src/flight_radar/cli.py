@@ -8,10 +8,10 @@ from pathlib import Path
 
 from flight_radar.config import load_routes
 from flight_radar.notify import send
-from flight_radar.providers import FakeProvider
+from flight_radar.providers import FakeProvider, GoogleFlightsProvider
 from flight_radar.tracker import Paths, run
 
-PROVIDERS = {"fake": FakeProvider}
+PROVIDERS = {cls.name: cls for cls in (FakeProvider, GoogleFlightsProvider)}
 KST = timezone(timedelta(hours=9))
 
 
