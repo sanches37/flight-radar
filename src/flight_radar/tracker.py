@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -18,6 +19,13 @@ class Paths:
         self.routes = root / "routes.yaml"
         self.data = root / "data" / "quotes"
         self.state = root / "state" / "alerts.json"
+        self.health = root / "state" / "health.json"
+
+
+@dataclass(frozen=True)
+class RunResult:
+    alerts: list[Alert]
+    collected: int
 
 
 def run(
@@ -25,17 +33,19 @@ def run(
     provider: Provider,
     paths: Paths,
     observed_at: datetime,
-) -> list[Alert]:
+) -> RunResult:
     alerts: list[Alert] = []
+    collected = 0
 
     for route in routes:
         fresh = collect(route, provider, observed_at)
         append(paths.data, fresh)
+        collected += len(fresh)
 
         history = _history_before(paths.data, route, observed_at)
         alerts.extend(find_alerts(route, fresh, history, observed_at.date()))
 
-    return suppress_repeats(alerts, paths.state, observed_at.date())
+    return RunResult(suppress_repeats(alerts, paths.state, observed_at.date()), collected)
 
 
 def collect(route: Route, provider: Provider, observed_at: datetime) -> list[Quote]:

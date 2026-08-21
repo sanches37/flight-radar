@@ -57,21 +57,32 @@ def _recent_low(route: Route, history: list[Quote], today: date) -> int | None:
 
 
 def suppress_repeats(alerts: list[Alert], state_path: Path, today: date) -> list[Alert]:
-    """Drop alerts already sent for the same route and price band this week."""
+    """Drop alerts already sent for the same route and price band this week.
+
+    This only filters. `record_sent` writes the state, and the caller runs it
+    after delivery - marking an alert as sent before it goes out would let a
+    dry run, or a failed post, mute the real thing for seven days.
+    """
     state = _load_state(state_path)
     cutoff = today - timedelta(days=RENOTIFY_AFTER_DAYS)
-    fresh: list[Alert] = []
+    return [alert for alert in alerts if not _sent_since(state, alert, cutoff)]
 
+
+def record_sent(alerts: list[Alert], state_path: Path, today: date) -> None:
+    """Remember delivered alerts so the same news stays quiet for a week."""
+    if not alerts:
+        return
+
+    state = _load_state(state_path)
     for alert in alerts:
-        key = _dedupe_key(alert)
-        last_sent = state.get(key)
-        if last_sent and date.fromisoformat(last_sent) > cutoff:
-            continue
-        fresh.append(alert)
-        state[key] = today.isoformat()
+        state[_dedupe_key(alert)] = today.isoformat()
 
-    _save_state(state_path, state, cutoff)
-    return fresh
+    _save_state(state_path, state, today - timedelta(days=RENOTIFY_AFTER_DAYS))
+
+
+def _sent_since(state: dict[str, str], alert: Alert, cutoff: date) -> bool:
+    last_sent = state.get(_dedupe_key(alert))
+    return last_sent is not None and date.fromisoformat(last_sent) > cutoff
 
 
 def _dedupe_key(alert: Alert) -> str:

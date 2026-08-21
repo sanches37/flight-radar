@@ -1,7 +1,10 @@
+import shutil
+import sys
 from datetime import date, datetime, timezone
 
 from conftest import make_quote
 
+from flight_radar.cli import main
 from flight_radar.config import load_routes
 from flight_radar.providers import FakeProvider
 from flight_radar.store import append, read_since
@@ -81,10 +84,37 @@ def test_read_since_spans_month_boundaries(tmp_path):
 def test_run_persists_every_quote(tmp_path, route):
     paths = Paths(tmp_path)
 
-    run([route], FakeProvider(), paths, NOW)
+    result = run([route], FakeProvider(), paths, NOW)
 
     stored = read_since(paths.data, route.id, date(2026, 8, 1), date(2026, 8, 31))
     assert len(stored) == len(route.date_pairs()) * 2
+    assert result.collected == len(stored)
+
+
+def test_dry_run_writes_no_notification_state(tmp_path, monkeypatch):
+    """A dry run that marked alerts as sent would mute the real one for a week."""
+    paths = _cli_run(tmp_path, monkeypatch, "--dry-run")
+
+    assert not paths.state.exists()
+    assert not paths.health.exists()
+
+
+def test_a_real_run_records_what_it_delivered(tmp_path, monkeypatch):
+    paths = _cli_run(tmp_path, monkeypatch)
+
+    assert paths.health.exists()
+
+
+def _cli_run(tmp_path, monkeypatch, *flags) -> Paths:
+    paths = Paths(tmp_path)
+    shutil.copy(_repo_root() / "routes.yaml", paths.routes)
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    monkeypatch.setattr(sys, "argv", ["track", "--root", str(tmp_path), *flags])
+
+    main()
+
+    return paths
 
 
 def _repo_root():

@@ -1,0 +1,54 @@
+name: track
+
+# 07:05 / 19:05 KST. Off the hour on purpose - GitHub's scheduler is busiest
+# at :00 and delays runs by tens of minutes there.
+on:
+  schedule:
+    - cron: "5 22 * * *"
+    - cron: "5 10 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# The repo is the database, so two runs must never push on top of each other.
+concurrency:
+  group: track
+  cancel-in-progress: false
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --frozen
+
+      - name: Collect prices and notify
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: uv run track --provider google_flights
+
+      # Always: a run that died halfway still wrote real prices to disk, and
+      # throwing them away would leave a hole in the history for no reason.
+      - name: Commit what was collected
+        if: always()
+        run: |
+          git config user.name "flight-radar"
+          git config user.email "actions@users.noreply.github.com"
+          # mkdir so a run that died before writing anything fails on its own
+          # error, not on an "unknown pathspec" from this step.
+          mkdir -p data state
+          git add data state
+          if git diff --quiet --cached; then
+            echo "nothing new collected"
+            exit 0
+          fi
+          git commit -m "chore: 가격 수집 $(date -u '+%Y-%m-%d %H:%M UTC') [skip ci]"
+          git push

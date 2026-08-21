@@ -14,8 +14,10 @@ _API = "https://api.telegram.org/bot{token}/sendMessage"
 def send(alerts: list[Alert]) -> None:
     if not alerts:
         return
+    send_text("\n\n".join(format_alert(alert) for alert in alerts))
 
-    text = "\n\n".join(format_alert(alert) for alert in alerts)
+
+def send_text(text: str) -> None:
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
 

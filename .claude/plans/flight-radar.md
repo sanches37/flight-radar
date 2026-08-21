@@ -45,10 +45,10 @@ CLI 키 `"google"` vs 저장값 `"google_flights"` 불일치 → `PROVIDERS`를 
 
 ---
 
-## P-1b — 분리 발권 조합  (P-2 뒤로 미룸)
+## P-1b — 분리 발권 조합  ← **다음**
 
-**미룬 이유**: 출발까지 45일뿐이고 P-4 percentile 판정이 30일 히스토리를 요구한다.
-통합권만이라도 매일 쌓기 시작하는 것이 분리 발권보다 급하다.
+**P-2 뒤로 미뤘던 이유** (이제 해소): P-4 percentile 판정이 30일 히스토리를 요구하는데
+출발까지 45일뿐이었다. 통합권만이라도 매일 쌓기 시작하는 것이 급했다.
 
 1. `인천→허브`와 `허브→목적지`를 따로 조회해 합산 (`Quote.legs` 채움)
 2. 자가환승 최소 연결시간 가드 (예: 3시간 미만 조합 제외)
@@ -63,18 +63,43 @@ CLI 키 `"google"` vs 저장값 `"google_flights"` 불일치 → `PROVIDERS`를 
 
 ---
 
-## P-2 — GitHub Actions cron
+## P-2 — GitHub Actions cron  ✅ 완료
 
-- `.github/workflows/track.yml`, 1일 2회
-- `data/`, `state/` 변경분 자동 커밋 (`[skip ci]`)
-- 시크릿: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
-  (사용자가 텔레그램 `@BotFather`에서 발급 — **아직 안 함**)
-- **연속 실패 감시**: N회 연속 0건 수집 시 알림. 조용한 죽음이 최대 리스크
-- **먼저 고칠 것 (P-1a에서 발견)**: `--dry-run`이 알림 중복 차단 상태를 오염시킨다.
-  `tracker.run()`이 `suppress_repeats`로 `state/alerts.json`을 먼저 쓰는데
-  `cli.py`는 `--dry-run`일 때 `send()`를 건너뛴다 → 아무에게도 안 간 알림이
-  7일간 재알림 차단된다. 발송 성공 후에 상태를 쓰도록 순서를 바꿀 것
-- **다음 Step에서 깨질 것**: 없음
+`.github/workflows/track.yml` — 07:05 / 19:05 KST (`5 22`/`5 10` UTC),
+`workflow_dispatch` 포함. `data/`·`state/` 자동 커밋 `[skip ci]`.
+
+**세 가지를 했다**
+
+1. **알림 상태 오염 수정.** `suppress_repeats`를 거르기 전용으로 만들고
+   `record_sent`를 새로 뒀다. `cli.deliver()`가 **발송 → 기록** 순서로 부른다.
+   `--dry-run`은 `deliver()` 앞에서 return하므로 알림 상태를 일절 건드리지 않는다.
+   실측으로 확인: fake 한 사이클에서 알림 2건이 발사됐고, 고치기 전이라면
+   dry-run 한 번이 그 2건을 7일간 막았을 상황이었다
+2. **조용한 죽음 감시** (`health.py`). `state/health.json`에 연속 0건 횟수를 쌓고
+   3회(≈1.5일) 이상이면 텔레그램 경고. **임계 도달 이후 매 실행 반복 발송**한다 —
+   crossing 1회만 쏘면 그 한 번이 전송 실패로 날아갈 때 감시가 통째로 무력해진다
+3. **커밋 스텝은 `if: always()`.** 중간에 죽어도 이미 디스크에 쓴 실제 가격은
+   버리지 않는다. 히스토리에 구멍을 남기는 쪽이 더 나쁘다
+
+**설계 판단 기록**
+
+- 재시도·rebase 로직 없음. push 충돌은 실행 간격 12시간 + `concurrency` 그룹으로
+  사실상 안 나고, 나면 job이 빨갛게 실패해 메일이 온다. 조용히 넘어가는 것보다 낫다
+- `git add data state` 앞에 `mkdir -p` — 이른 실패 시 pathspec 에러로 원인이
+  가려지는 것을 막는다
+
+**종료 후 리뷰**: 발견 2건 → 수용 0 / 기각 1 / 트리거 대기 1.
+(기각: `test_a_real_run_records_what_it_delivered`가 존재 확인만 한다 →
+dry-run 테스트가 공허하지 않음을 증명하는 짝이므로 의도된 범위 /
+트리거 대기: `alert._load_state`와 `health._load`가 byte-identical 3줄.
+세 번째 JSON 상태 파일이 생기면 그때 추출)
+
+**다음 Step에서 깨질 것**: P-1b가 요청량을 3배로 만들면 실행이 ~9분이 된다
+(timeout 20분은 아직 여유). 더 중요한 건 health 감시가 **0건일 때만** 운다는 것 —
+"절반만 수집" 같은 부분 실패는 못 잡는다. P-1b에서 구간별 기대 건수 대비
+감시로 넓힐지 판단할 것.
+
+---
 
 ## P-3 — 정적 대시보드
 

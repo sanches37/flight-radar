@@ -2,7 +2,7 @@ from datetime import date
 
 from conftest import make_quote
 
-from flight_radar.alert import find_alerts, suppress_repeats
+from flight_radar.alert import find_alerts, record_sent, suppress_repeats
 
 TODAY = date(2026, 8, 21)
 
@@ -71,15 +71,15 @@ def test_reports_only_the_cheapest_eligible_quote(route):
 def test_repeat_alert_is_suppressed_within_a_week(tmp_path, route):
     state = tmp_path / "alerts.json"
     alerts = find_alerts(route, [make_quote(1_350_000, TODAY)], history=[], today=TODAY)
+    record_sent(alerts, state, TODAY)
 
-    assert len(suppress_repeats(alerts, state, TODAY)) == 1
     assert suppress_repeats(alerts, state, date(2026, 8, 25)) == []
 
 
 def test_alert_resumes_after_the_quiet_period(tmp_path, route):
     state = tmp_path / "alerts.json"
     alerts = find_alerts(route, [make_quote(1_350_000, TODAY)], history=[], today=TODAY)
-    suppress_repeats(alerts, state, TODAY)
+    record_sent(alerts, state, TODAY)
 
     assert len(suppress_repeats(alerts, state, date(2026, 9, 1))) == 1
 
@@ -87,8 +87,17 @@ def test_alert_resumes_after_the_quiet_period(tmp_path, route):
 def test_meaningfully_lower_price_breaks_through_suppression(tmp_path, route):
     state = tmp_path / "alerts.json"
     first = find_alerts(route, [make_quote(1_350_000, TODAY)], history=[], today=TODAY)
-    suppress_repeats(first, state, TODAY)
+    record_sent(first, state, TODAY)
 
     cheaper = find_alerts(route, [make_quote(1_100_000, TODAY)], history=[], today=TODAY)
 
     assert len(suppress_repeats(cheaper, state, TODAY)) == 1
+
+
+def test_undelivered_alert_stays_eligible(tmp_path, route):
+    """Filtering must not consume the quiet period; only delivery does."""
+    state = tmp_path / "alerts.json"
+    alerts = find_alerts(route, [make_quote(1_350_000, TODAY)], history=[], today=TODAY)
+
+    assert len(suppress_repeats(alerts, state, TODAY)) == 1
+    assert len(suppress_repeats(alerts, state, TODAY)) == 1

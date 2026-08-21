@@ -10,8 +10,9 @@ Google Flights 트래킹을 대체하지 않는다. **보완**한다 — Google�
 ## 상태
 
 - [x] **P-0** 파이프라인 + fake provider + 테스트
-- [ ] **P-1** fast-flights 연결 (실제 Google Flights 데이터)
-- [ ] **P-2** GitHub Actions cron + 자동 커밋 + 텔레그램
+- [x] **P-1a** fast-flights 연결 (실제 Google Flights 데이터)
+- [x] **P-2** GitHub Actions cron + 자동 커밋 + 텔레그램
+- [ ] **P-1b** 분리 발권 조합
 - [ ] **P-3** 정적 대시보드 (히트맵 + 가격 곡선) + Pages
 - [ ] **P-4** percentile "지금 살까" 판정
 
@@ -19,9 +20,13 @@ Google Flights 트래킹을 대체하지 않는다. **보완**한다 — Google�
 
 ```bash
 uv sync
-uv run track --provider fake     # 한 사이클 실행
-uv run pytest                    # 테스트
+uv run track --provider fake              # 네트워크 없이 한 사이클
+uv run track --provider google_flights    # 실제 수집 (~2분)
+uv run pytest                             # 테스트
 ```
+
+수집은 GitHub Actions가 매일 07:05 / 19:05 KST에 돌리고, 결과를 이 repo에 커밋한다.
+텔레그램 알림에는 `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` 시크릿이 필요하다.
 
 추적 대상을 바꾸려면 `routes.yaml` 하나만 고치면 된다.
 
@@ -40,3 +45,6 @@ uv run pytest                    # 테스트
 **알림은 노선당 최저가 1건만.** 매칭되는 모든 견적에 알림을 보내면 한 번의 가격 하락에
 수십 개가 발사되고, 그렇게 시끄러운 알림은 결국 꺼진다.
 같은 노선·출발일·5만원 가격대는 7일간 재알림하지 않는다.
+
+**조용한 죽음이 최대 리스크다.** 스크레이핑이 깨져도 파이프라인은 성공한 것처럼 돌고
+0건만 쌓인다. 3회 연속 0건이면 텔레그램으로 경고한다 (`state/health.json`).
