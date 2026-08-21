@@ -19,7 +19,7 @@ from html import escape
 
 from flight_radar.config import Route
 from flight_radar.insight import LOW_PERCENTILE, Market, cheapest_by_day, rank_today
-from flight_radar.models import Quote
+from flight_radar.models import Quote, trip_shape
 
 WIDTH = 720
 HEIGHT = 200
@@ -51,13 +51,18 @@ def _section(data: RouteData) -> str:
     cheapest = min(grid.values(), default=None)
 
     parts = [
-        f"<h2>{escape(route.origin)} → {escape(route.destination)}</h2>",
+        f"<h2>{_heading(route)}</h2>",
         _verdict(route, cheapest, market),
         _curve(envelope) if envelope else "",
         _heatmap(route, grid) if grid else "<p class='empty'>아직 수집된 견적이 없습니다.</p>",
         _health(data),
     ]
     return "<section>" + "".join(part for part in parts if part) + "</section>"
+
+
+def _heading(route: Route) -> str:
+    legs = trip_shape(route.origin, route.destination, route.inbound_origin)
+    return " / ".join(f"{escape(start)} → {escape(end)}" for start, end in legs)
 
 
 def cheapest_by_pair(route: Route, quotes: Sequence[Quote]) -> dict[tuple[date, date], int]:

@@ -7,6 +7,7 @@ import os
 import httpx
 
 from flight_radar.alert import Alert
+from flight_radar.models import Quote, trip_shape
 
 _API = "https://api.telegram.org/bot{token}/sendMessage"
 
@@ -35,7 +36,7 @@ def send_text(text: str) -> None:
 
 def format_alert(alert: Alert) -> str:
     quote = alert.quote
-    headline = f"{quote.origin}->{quote.destination} {quote.price_krw:,}원"
+    headline = f"{_shape(quote)} {quote.price_krw:,}원"
     dates = f"{quote.depart_date} ~ {quote.return_date}"
     routing = f"{'/'.join(quote.carriers)} · 경유 {quote.stops}회 · {quote.duration_minutes // 60}시간"
 
@@ -44,6 +45,11 @@ def format_alert(alert: Alert) -> str:
     if quote.itinerary_type == "split":
         lines.append("분리 발권 " + " + ".join(f"{leg.price_krw:,}" for leg in quote.legs))
     return "\n".join(lines)
+
+
+def _shape(quote: Quote) -> str:
+    legs = trip_shape(quote.origin, quote.destination, quote.return_from)
+    return " / ".join(f"{start}->{end}" for start, end in legs)
 
 
 def _market_lines(alert: Alert) -> list[str]:

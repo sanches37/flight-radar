@@ -4,7 +4,9 @@ from datetime import date, datetime, timezone
 
 from conftest import make_quote
 
-from flight_radar.cli import main
+from dataclasses import replace
+
+from flight_radar.cli import PROVIDERS, main, routes_for
 from flight_radar.config import load_routes
 from flight_radar.models import PriceInsight
 from flight_radar.providers import FakeProvider
@@ -14,6 +16,7 @@ from flight_radar.tracker import Paths, collect, run
 KST = timezone.utc
 NOW = datetime(2026, 8, 21, 9, 0, tzinfo=KST)
 DEPART, RETURN = date(2026, 10, 5), date(2026, 10, 15)
+WEEKS_PER_MONTH = 4.35
 
 
 def test_date_pairs_stay_inside_the_travel_window(route):
@@ -36,9 +39,40 @@ def test_date_pairs_drop_combinations_that_overrun_the_window(route):
 def test_routes_yaml_parses():
     routes = load_routes(Paths(_repo_root()).routes)
 
-    assert {route.id for route in routes} == {"icn-lis", "icn-opo"}
-    assert all(route.split_hubs for route in routes)
+    assert {route.id for route in routes} == {"icn-lis", "icn-opo", "icn-lis-opo", "icn-lis-mad"}
     assert all(route.date_pairs() for route in routes)
+    assert all(route.provider in PROVIDERS for route in routes)
+
+
+def test_the_metered_routes_stay_inside_the_free_search_quota():
+    """SerpApi gives 250 searches a month; widening a window must fail here first.
+
+    One search per date pair, two sweeps a week. Quota exhaustion would show up
+    as silently missing open-jaw prices, which nothing else in the pipeline
+    would notice.
+    """
+    routes = load_routes(Paths(_repo_root()).routes)
+    metered = [route for route in routes if route.provider == "serpapi_openjaw"]
+    per_sweep = sum(len(route.date_pairs()) for route in metered)
+
+    assert per_sweep * 2 * WEEKS_PER_MONTH <= 250
+
+
+def test_each_source_only_runs_the_routes_that_declare_it():
+    """Schedules stay out of routes.yaml: the workflow asks for a source."""
+    routes = load_routes(Paths(_repo_root()).routes)
+
+    assert {r.id for r in routes_for(routes, "google_flights")} == {"icn-lis", "icn-opo"}
+    assert {r.id for r in routes_for(routes, "serpapi_openjaw")} == {"icn-lis-opo", "icn-lis-mad"}
+    assert routes_for(routes, "fake") == routes
+
+
+def test_an_open_jaw_window_can_cap_the_departure_side(route):
+    """Every metered call costs quota, so the grid is narrowed on purpose."""
+    narrowed = replace(route, depart_until=date(2026, 10, 5))
+
+    assert {depart for depart, _ in narrowed.date_pairs()} == {date(2026, 10, 5)}
+    assert len(narrowed.date_pairs()) < len(route.date_pairs())
 
 
 def test_collect_returns_through_and_split_itineraries(route):
@@ -71,6 +105,30 @@ def test_store_roundtrip_preserves_quote(tmp_path):
     restored = read_since(tmp_path, "icn-lis", date(2026, 8, 1), date(2026, 8, 31))
 
     assert restored == [original]
+
+
+def test_store_roundtrip_preserves_an_open_jaw_quote(tmp_path):
+    original = make_quote(1_383_200, date(2026, 8, 21), return_from="OPO")
+    append(tmp_path, [original])
+
+    restored = read_since(tmp_path, "icn-lis", date(2026, 8, 1), date(2026, 8, 31))
+
+    assert restored == [original]
+
+
+def test_quotes_written_before_open_jaw_existed_still_load(tmp_path):
+    """Stored history predates the field; reading it must not need a migration."""
+    import json
+
+    legacy = make_quote(1_156_200, date(2026, 8, 21)).to_json()
+    del legacy["return_from"]
+    path = tmp_path / "icn-lis" / "2026-08.jsonl"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(legacy) + "\n", encoding="utf-8")
+
+    restored = read_since(tmp_path, "icn-lis", date(2026, 8, 1), date(2026, 8, 31))
+
+    assert restored[0].return_from is None
 
 
 def test_store_appends_across_runs(tmp_path):

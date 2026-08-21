@@ -1,0 +1,57 @@
+name: openjaw
+
+# Monday and Thursday, 07:05 KST. Twice a week rather than twice a day because
+# every date pair costs one SerpApi search and the free plan gives 250 a month:
+# 2 combinations x 7 pairs x 2 sweeps a week comes to 122.
+on:
+  schedule:
+    - cron: "5 22 * * 0,3"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Shares the repo with the daily job, so the two must never push over each other.
+concurrency:
+  group: track
+  cancel-in-progress: false
+
+jobs:
+  openjaw:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --frozen
+
+      # Picks up only the routes that declare this source, so the schedule
+      # lives here and the route list stays in routes.yaml.
+      - name: Collect open-jaw prices and notify
+        env:
+          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: uv run track --provider serpapi_openjaw
+
+      - name: Render the dashboard
+        if: always()
+        run: uv run dashboard
+
+      - name: Commit what was collected
+        if: always()
+        run: |
+          git config user.name "flight-radar"
+          git config user.email "actions@users.noreply.github.com"
+          mkdir -p data state docs
+          git add data state docs
+          if git diff --quiet --cached; then
+            echo "nothing new collected"
+            exit 0
+          fi
+          git commit -m "chore: 오픈조 수집 $(date -u '+%Y-%m-%d %H:%M UTC') [skip ci]"
+          git push

@@ -38,3 +38,17 @@ def test_no_curve_means_no_history_lines():
         "QR · 경유 1회 · 18시간",
         "목표가 도달",
     ]
+
+
+def test_an_open_jaw_alert_names_both_ends():
+    """A round-trip headline for an open-jaw would hide half the trip."""
+    quote = make_quote(1_383_200, TODAY, return_from="OPO")
+    alert = Alert(quote, "target", None)
+
+    assert format_alert(alert).startswith("ICN->LIS / OPO->ICN 1,383,200원")
+
+
+def test_a_round_trip_headline_is_unchanged():
+    alert = Alert(make_quote(1_350_000, TODAY), "target", None)
+
+    assert format_alert(alert).startswith("ICN->LIS 1,350,000원")

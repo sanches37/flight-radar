@@ -12,22 +12,25 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from flight_radar.alert import record_sent
-from flight_radar.config import load_routes
+from flight_radar.config import Route, load_routes
 from flight_radar.dashboard import RouteData, render
 from flight_radar.health import record_run
 from flight_radar.notify import send, send_text
-from flight_radar.providers import FakeProvider, GoogleFlightsProvider
+from flight_radar.providers import FakeProvider, GoogleFlightsProvider, SerpApiOpenJawProvider
 from flight_radar.store import read_curves, read_latest
 from flight_radar.tracker import Paths, RunResult, run
 
-PROVIDERS = {cls.name: cls for cls in (FakeProvider, GoogleFlightsProvider)}
+PROVIDERS = {
+    cls.name: cls
+    for cls in (FakeProvider, GoogleFlightsProvider, SerpApiOpenJawProvider)
+}
 KST = timezone(timedelta(hours=9))
 
 
 def main() -> None:
     args = _parse_args()
     paths = Paths(args.root)
-    routes = load_routes(paths.routes)
+    routes = routes_for(load_routes(paths.routes), args.provider)
     provider = PROVIDERS[args.provider]()
     now = datetime.now(KST)
 
@@ -38,6 +41,19 @@ def main() -> None:
         return
 
     deliver(result, paths, now.date())
+
+
+def routes_for(routes: list[Route], provider: str) -> list[Route]:
+    """The routes this source is responsible for.
+
+    Each route declares where its prices come from, so the schedules stay out of
+    routes.yaml: the daily workflow asks for google_flights and the twice-weekly
+    one asks for the metered open-jaw source. `fake` stands in for every source
+    so a full pipeline run needs no network.
+    """
+    if provider == FakeProvider.name:
+        return routes
+    return [route for route in routes if route.provider == provider]
 
 
 def dashboard() -> None:

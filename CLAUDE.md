@@ -34,8 +34,9 @@ Google Flights 트래킹도 **같이 켜두는 것이 전제**다. 이 도구가
 ```bash
 uv sync
 uv run pytest                 # 테스트
-uv run track --provider google_flights            # 실제 수집 한 사이클 (~2분)
+uv run track --provider google_flights            # 왕복 수집 한 사이클 (~2분)
 uv run track --provider google_flights --dry-run  # 수집·저장만, 알림 없음
+uv run track --provider serpapi_openjaw           # 오픈조 수집 (SerpApi 14회 소모)
 uv run track --provider fake                      # 네트워크 없이 파이프라인만
 uv run dashboard              # 저장된 데이터로 docs/index.html 재생성 (수집 없음)
 ```
@@ -55,6 +56,20 @@ diff가 한 줄씩만 늘고, git 히스토리가 그대로 백업.
 
 **수집은 전부, 필터는 알림에서만.** provider는 `routes.yaml`의 constraints를 보지 않는다.
 제약을 나중에 바꿔도 이미 쌓인 히스토리를 새 기준으로 재평가할 수 있어야 하므로.
+
+**`--provider`는 구현 선택이자 노선 필터다.** 노선이 `routes.yaml`에서 자기 출처를
+선언하고, 워크플로는 출처 이름만 넘긴다 — 일일 cron은 `google_flights` 노선만,
+주 2회 cron은 `serpapi_openjaw` 노선만 돈다. 노선 이름을 워크플로에 박지 않으므로
+"추적 대상 변경은 routes.yaml 하나"가 유지된다. `fake`는 모든 노선의 대역.
+
+**오픈조는 SerpApi로만 된다.** Google이 다구간 결과를 서버 렌더링하지 않는다
+(왕복 페이로드 66,067자 vs 다구간 5,579자). 무료 한도가 월 250회뿐이라
+**주 2회 × 2조합 × 7쌍 = 월 122회**에 맞췄고, `window.depart_until`로 출발일을
+좁혀 쌍 수를 줄인다. 한도를 넘기는 설정 변경은 테스트가 먼저 실패한다
+(`test_the_metered_routes_stay_inside_the_free_search_quota`).
+
+**오픈조에는 60일 곡선이 없다.** 다구간 응답에 `price_insights`가 없어
+percentile 판정을 못 한다. 오픈조는 **목표가 도달로만** 알린다.
 
 **provider는 교체 전제.** fast-flights는 Google의 비공개 스키마 의존이라 언젠가 깨진다.
 깨지면 `providers/` 파일 하나만 갈아끼우고 히스토리는 남는다.
@@ -101,7 +116,8 @@ src/flight_radar/
   models.py              Quote / Leg
   providers/base.py      Provider 프로토콜
   providers/fake.py      결정론적 fake (네트워크 없이 테스트)
-  providers/google_flights.py  fast-flights 스크레이핑 (통합권)
+  providers/google_flights.py  fast-flights 스크레이핑 (왕복 통합권)
+  providers/serpapi_openjaw.py SerpApi 다구간 (오픈조, 유료 한도 소모)
   store.py               견적은 append-only JSONL, 곡선은 병합 갱신 맵
   alert.py               목표가·급락 판정 + 중복 차단
   notify.py              텔레그램 (자격증명 없으면 stdout)
@@ -109,8 +125,9 @@ src/flight_radar/
   tracker.py             한 사이클 조립
   cli.py                 진입점
 docs/index.html          정적 대시보드 (GitHub Pages)
-.github/workflows/track.yml  하루 2회 cron + data/state/docs 자동 커밋
-tests/                   74 passed
+.github/workflows/track.yml    하루 2회 cron (왕복) + data/state/docs 자동 커밋
+.github/workflows/openjaw.yml  주 2회 cron (오픈조) — 월/목 07:05 KST
+tests/                   90 passed
 ```
 
 ## 코드 스타일
@@ -129,6 +146,8 @@ tests/                   74 passed
 - [x] **P-4** percentile "지금 살까" 판정 — Google 60일 곡선으로 오늘부터 가능
 - [x] **P-3** 정적 대시보드 — `docs/index.html`. **Pages 활성화는 사용자 몫**
       (repo Settings → Pages → `main` / `/docs`)
+- [x] **P-5** 오픈조 (리스본 in / 포르투·마드리드 out) — SerpApi, 주 2회.
+      **Actions Secrets에 `SERPAPI_KEY` 필요**
 - [ ] **P-1b** 분리 발권 조합 — **전제 확인 먼저.** 위 "존재 이유" 정정 참조
 
 상세 계획은 `.claude/plans/flight-radar.md`.

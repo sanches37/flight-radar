@@ -38,6 +38,8 @@ class Quote:
     carriers: tuple[str, ...]
     observed_at: datetime
     legs: tuple[Leg, ...] = field(default=())
+    # Set only when the trip home starts somewhere else than it landed.
+    return_from: str | None = None
 
     def to_json(self) -> dict:
         raw = asdict(self)
@@ -64,6 +66,7 @@ class Quote:
             carriers=tuple(raw["carriers"]),
             observed_at=datetime.fromisoformat(raw["observed_at"]),
             legs=tuple(_leg_from_json(leg) for leg in raw.get("legs", [])),
+            return_from=raw.get("return_from"),
         )
 
 
@@ -95,6 +98,20 @@ class Observation:
 
     quotes: list[Quote] = field(default_factory=list)
     insights: list[PriceInsight] = field(default_factory=list)
+
+
+def trip_shape(origin: str, destination: str, inbound: str | None) -> tuple[tuple[str, str], ...]:
+    """The hops worth naming: the way out, plus the way home when it differs.
+
+    A round trip comes home from where it landed, so naming the outbound says
+    everything. An open-jaw does not, and a one-ended headline would hide half
+    the trip. Rendering is left to the caller - the page and the phone use
+    different arrows and different escaping.
+    """
+    outbound = (origin, destination)
+    if inbound is None or inbound == destination:
+        return (outbound,)
+    return (outbound, (inbound, origin))
 
 
 def _leg_to_json(leg: Leg) -> dict:

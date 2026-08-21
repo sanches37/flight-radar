@@ -34,13 +34,29 @@ class Route:
     target_price_krw: int
     constraints: Constraints
     split_hubs: tuple[str, ...] = ()
+    provider: str = "google_flights"
+    return_from: str | None = None
+    depart_until: date | None = None
+
+    @property
+    def inbound_origin(self) -> str:
+        """Where the trip home starts. Same as the destination unless open-jaw."""
+        return self.return_from or self.destination
 
     def date_pairs(self) -> list[tuple[date, date]]:
-        """Every (depart, return) pair that fits inside the travel window."""
+        """Every (depart, return) pair that fits inside the travel window.
+
+        depart_until caps the departure side independently of return_by. Open-jaw
+        costs a metered API call per pair, so its window is narrowed to the days
+        that actually carry the cheap fares rather than the whole grid.
+        """
         pairs: list[tuple[date, date]] = []
         departure = self.depart_from
+        last_departure = self.depart_until or self.return_by
 
         while departure + timedelta(days=min(self.trip_nights)) <= self.return_by:
+            if departure > last_departure:
+                break
             for nights in sorted(self.trip_nights):
                 arrival = departure + timedelta(days=nights)
                 if arrival <= self.return_by:
@@ -74,6 +90,8 @@ def _parse_route(entry: dict) -> Route:
             f"route {entry['id']}: window is too short for the shortest trip"
         )
 
+    depart_until = window.get("depart_until")
+
     return Route(
         id=entry["id"],
         origin=entry["origin"],
@@ -84,6 +102,9 @@ def _parse_route(entry: dict) -> Route:
         target_price_krw=entry["target_price_krw"],
         constraints=_parse_constraints(entry.get("constraints", {})),
         split_hubs=tuple(entry.get("split_hubs", [])),
+        provider=entry.get("provider", "google_flights"),
+        return_from=entry.get("return_from"),
+        depart_until=_as_date(depart_until) if depart_until else None,
     )
 
 

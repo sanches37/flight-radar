@@ -108,3 +108,18 @@ def test_the_curve_axis_is_labelled_by_age_not_by_date(route):
     page = _page(route, quotes, {"2026-10-05..2026-10-15": CHEAP_TODAY})
 
     assert "20일 전" in page and "오늘" in page
+
+
+def test_an_open_jaw_section_names_both_ends(route):
+    from dataclasses import replace
+
+    open_jaw = replace(route, return_from="OPO")
+    page = _page(open_jaw, [make_quote(1_383_200, date(2026, 8, 21), return_from="OPO")])
+
+    assert "ICN → LIS / OPO → ICN" in page
+
+
+def test_a_round_trip_section_is_unchanged(route):
+    page = _page(route, [make_quote(1_350_000, date(2026, 8, 21))])
+
+    assert "<h2>ICN → LIS</h2>" in page

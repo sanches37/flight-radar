@@ -415,6 +415,97 @@ Actions 로그를 사람이 보지 않으면 소용없다. P-3 대시보드에�
 
 ---
 
+## P-5 — 오픈조 (리스본 in / 포르투·마드리드 out)  ✅ 완료
+
+**사용자 결정**: 여행 루트상 리스본 in / 포르투 out을 보고 싶다. 무료 한도 안에서
+주 2회, 마드리드 조합도 함께.
+
+### 왜 별도 provider인가
+
+Google이 다구간 결과를 서버 렌더링하지 않는다 (P-1b 실측). fast-flights로는 못 닿는다.
+SerpApi `type=3` + `multi_city_json`은 된다.
+
+**응답 규약은 왕복과 같다.** 실측으로 확인: 가격은 총액인데 응답에 실린 여정은
+**가는 편뿐**이다. `1,383,200원 / flights 2구간 / layovers[CDG] / total_duration 1120`
+= ICN→CDG→LIS. 즉 `stops = len(flights) - 1`, `duration = total_duration`이 모두
+**가는 편 기준**이고, 제약도 가는 편에만 걸린다 — 통합권 왕복과 동일.
+
+**곡선은 없다.** 다구간 응답의 최상위 키는 `best_flights` / `other_flights` /
+`airports`뿐이고 `price_insights`가 없다. 왕복에서 공짜로 얻는 60일 히스토리가
+오픈조엔 안 온다 → **percentile 판정 불가.** 0부터 쌓아야 하고 출발까지 약 13점이다.
+오픈조 판정은 목표가 도달만으로 한다.
+
+### 예산 (2026-08-21 계정 실측: Free, 231회 남음, 9/21 갱신)
+
+날짜쌍을 좁힌다. 오늘 오픈조 전수 조사에서 최저가가 10/06·10/07 출발에 몰렸고
+10/05·10/08·10/09 출발은 최저 대비 +27~45만이었다. **출발일 상한만 걸면 된다** —
+기존 7~11박 규칙을 그대로 쓰고 `depart_until: 2026-10-07`을 더하면 7쌍이 나온다.
+
+```
+주 2회 × 2조합 × 7쌍 = 14회/sweep → 월 122회 / 250회   (여유 128)
+지금~9/21  8.8 sweep × 14 = 123회 ≤ 231  ✓
+```
+
+유료 전환 불필요. 참고 요금(2026-08-21 확인): Starter $25/1,000회,
+Developer $75/5,000회.
+
+### 설계 결정
+
+1. `window.depart_until` — 출발일 상한. 생략 시 기존 동작(return_by에서 파생)
+2. `Route.return_from` — 귀국 출발 공항. 생략 시 `destination` (= 지금까지의 왕복)
+3. `Route.provider` — 노선이 어느 소스를 쓰는지 선언. **CLI `--provider`가 이걸로
+   노선을 고른다**: 일일 워크플로는 `google_flights` 노선만, 주 2회 워크플로는
+   `serpapi_openjaw` 노선만 돈다. `routes.yaml`이 여전히 유일한 진실 —
+   워크플로에 노선 이름을 박지 않는다. `fake`는 모든 노선의 대역
+4. `Quote.return_from` — 알림·대시보드가 오픈조를 오픈조로 표시. 생략 시 None
+5. 목표가는 현재가보다 낮게 (P-4에서 배운 것 — 시장가보다 높으면 항상 이겨서
+   다른 판정이 죽는다): OPO out 1,300,000 (현재 1,383,200) / MAD out 1,200,000
+   (현재 1,273,800)
+
+### 진입 전 객관 리뷰 (셀프) — 5항목
+
+1. **YAGNI**: 새 필드 4개 전부 이 Step에 실제 사용처가 있다. `depart_until`은
+   예산 제약에서, `return_from`은 오픈조 정의 자체에서, `provider`는 두 cron을
+   가르는 데서, `Quote.return_from`은 표시에서. 통과
+2. **중복**: SerpApi provider가 google provider와 Quote 조립 모양이 비슷하나
+   파싱 소스가 완전히 다르다 (`ResultList` vs JSON dict). 모양이 같을 뿐 —
+   추출 금지. envelope·랭킹은 오픈조에 곡선이 없어 해당 없음
+3. **금지패턴**: provider가 constraints를 보지 않는다(전량 수집).
+   `datetime.now()`는 `cli.py`만. fake는 store에 안 들어간다
+4. **테스트**: SerpApi 응답 매핑(고정 샘플), 가는 편 기준 stops/duration,
+   provider별 노선 선택, `depart_until` 날짜쌍, `Quote.return_from` 하위호환.
+   네트워크 호출은 테스트하지 않는다 (google provider와 같은 원칙)
+5. **다음 Step에서 깨질 것 + 진입 경로**: 진입은 대시보드 3·4번째 섹션과 텔레그램.
+   깨질 것 — 오픈조는 곡선이 없어 **percentile이 영원히 안 뜬다**. 목표가만이
+   판정 수단이므로 목표가를 잘못 잡으면 이 노선은 조용해진다.
+   그리고 `state/health.json`을 일일 실행과 공유하므로 **오픈조만 죽으면 감지 못 한다**
+   (연속 0건 카운터가 google 성공으로 리셋된다). 대시보드 노선별 "견적 0건"이
+   유일한 신호 — 트리거 대기
+
+### 실측 검증 (2026-08-21)
+
+SerpApi 14회로 2노선 × 7쌍 수집, 148건. 잔여 225/250.
+
+| 조합 | 최저가 | 날짜 | 여정 |
+|---|---:|---|---|
+| LIS in / OPO out | 1,383,200 | 10/06·10/07 ~ 10/15 | AF 경유1회 18h40 |
+| LIS in / MAD out | **1,273,800** | 10/06 ~ 10/15 | EY 경유1회 20h55 |
+
+대시보드에 4개 섹션이 뜬다: `ICN → LIS` / `ICN → OPO` /
+`ICN → LIS / OPO → ICN` / `ICN → LIS / MAD → ICN`. 테스트 90개.
+
+### 종료 후 객관 리뷰 — 발견 2건 → 수용 2 / 기각 0 / 트리거 대기 0
+
+- **수용**: `Route.is_open_jaw`가 사용처 1곳짜리 얇은 래퍼 (YAGNI) → 제거
+- **수용**: `notify._shape`와 `dashboard._heading`이 "귀국이 다른 곳에서
+  시작하면 양쪽을 다 이름 붙인다"는 같은 판단을 각자 하고 있었다 (two-strikes)
+  → `models.trip_shape()`로 추출. 렌더링(화살표·이스케이프)은 호출부에 남겼다
+
+**사용자 액션 필요**: repo Settings → Secrets and variables → Actions →
+`SERPAPI_KEY` 추가. 없으면 주 2회 워크플로가 stderr에 남기고 0건 수집한다.
+
+---
+
 ## 트리거 대기 (지금 건드리지 말 것)
 
 - 통화 다중화 (KRW 외) — 실제 응답이 KRW가 아닐 때만
