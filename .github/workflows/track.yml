@@ -21,7 +21,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      # ref so the job gets the current tip of main. Without it checkout takes
+      # the SHA that triggered the run, and the other workflow's commit lands in
+      # between - which is exactly how the 2026-08-23 open-jaw push was rejected.
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - uses: astral-sh/setup-uv@v5
         with:
@@ -57,4 +62,10 @@ jobs:
             exit 0
           fi
           git commit -m "chore: 가격 수집 $(date -u '+%Y-%m-%d %H:%M UTC') [skip ci]"
-          git push
+          # A rejected push means the other workflow got there first. Replaying
+          # our commit on top costs nothing when the two touched different route
+          # files; if they touched the same one the step fails loudly, as before.
+          git push || {
+            git pull --rebase origin main
+            git push
+          }

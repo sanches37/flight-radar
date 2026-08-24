@@ -126,7 +126,7 @@ src/flight_radar/
   cli.py                 진입점
 docs/index.html          정적 대시보드 (GitHub Pages)
 .github/workflows/track.yml    하루 2회 cron (왕복) + data/state/docs 자동 커밋
-.github/workflows/openjaw.yml  주 2회 cron (오픈조) — 월/목 07:05 KST
+.github/workflows/openjaw.yml  주 2회 cron (오픈조) — 월/목 06:05 KST
 tests/                   90 passed
 ```
 
