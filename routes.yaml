@@ -45,25 +45,11 @@ routes:
       max_duration_minutes: 1380
       exclude_carriers: []
 
-  # 오픈조 — 리스본으로 들어가 다른 도시에서 나온다.
+  # 오픈조 — 리스본으로 들어가 마드리드에서 나온다.
   # Google이 다구간 결과를 서버 렌더링하지 않아 SerpApi로만 조회된다.
-  # 무료 한도가 월 250회뿐이라 주 2회 × 2조합 × 7쌍 = 월 122회에 맞췄다.
-  - id: icn-lis-opo
-    origin: ICN
-    destination: LIS
-    return_from: OPO
-    provider: serpapi_openjaw
-    window:
-      depart_from: 2026-10-06
-      depart_until: 2026-10-07
-      return_by: 2026-10-16
-    trip_nights: [7, 8, 9, 10, 11]
-    target_price_krw: 1290000  # 관측 최저 134.6만 대비 -4%
-    constraints:
-      max_stops: 1
-      max_duration_minutes: 1380
-      exclude_carriers: []
-
+  # 무료 한도가 월 250회뿐이라 7쌍 × 매일 = 월 217회에 맞췄다.
+  # 포르투 out은 2026-09-01에 뺐다 — 왕복 대비 +26만까지 벌어져 후보에서
+  # 밀렸고, 그 비용으로 마드리드를 매일 보는 편이 낫다. 필요하면 되살린다.
   - id: icn-lis-mad
     origin: ICN
     destination: LIS
@@ -74,7 +60,7 @@ routes:
       depart_until: 2026-10-07
       return_by: 2026-10-16
     trip_nights: [7, 8, 9, 10, 11]
-    target_price_krw: 1220000  # 관측 최저 127.1만 대비 -4%
+    target_price_krw: 1450000  # 2026-09-01 시세 149.5만에서 -4.5만. 122만은 도달 불가라 침묵했다
     constraints:
       max_stops: 1
       max_duration_minutes: 1380

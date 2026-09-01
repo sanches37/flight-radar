@@ -64,9 +64,14 @@ diff가 한 줄씩만 늘고, git 히스토리가 그대로 백업.
 
 **오픈조는 SerpApi로만 된다.** Google이 다구간 결과를 서버 렌더링하지 않는다
 (왕복 페이로드 66,067자 vs 다구간 5,579자). 무료 한도가 월 250회뿐이라
-**주 2회 × 2조합 × 7쌍 = 월 122회**에 맞췄고, `window.depart_until`로 출발일을
+**매일 × 1조합 × 7쌍 = 월 217회**에 맞췄고, `window.depart_until`로 출발일을
 좁혀 쌍 수를 줄인다. 한도를 넘기는 설정 변경은 테스트가 먼저 실패한다
 (`test_the_metered_routes_stay_inside_the_free_search_quota`).
+
+**포르투 out은 2026-09-01에 뺐다.** 왕복 대비 프리미엄이 +26만까지 벌어져
+후보에서 밀렸는데 수집 비용의 절반을 먹고 있었다. 그 비용으로 마드리드를
+주 2회 → 매일로 올렸다. 되살리려면 `routes.yaml`에 다시 넣고 주기를 낮춰야
+한다 — 두 조합을 매일 돌리면 한도를 넘어 테스트가 실패한다.
 
 **오픈조에는 60일 곡선이 없다.** 다구간 응답에 `price_insights`가 없어
 percentile 판정을 못 한다. 오픈조는 **목표가 도달로만** 알린다.
@@ -126,7 +131,7 @@ src/flight_radar/
   cli.py                 진입점
 docs/index.html          정적 대시보드 (GitHub Pages)
 .github/workflows/track.yml    하루 2회 cron (왕복) + data/state/docs 자동 커밋
-.github/workflows/openjaw.yml  주 2회 cron (오픈조) — 월/목 06:05 KST
+.github/workflows/openjaw.yml  매일 cron (오픈조 마드리드) — 06:05 KST
 tests/                   90 passed
 ```
 

@@ -1,12 +1,12 @@
 name: openjaw
 
-# Monday and Thursday, 06:05 KST - a clear hour before the daily job so the
-# two never queue behind each other. Twice a week rather than twice a day because
-# every date pair costs one SerpApi search and the free plan gives 250 a month:
-# 2 combinations x 7 pairs x 2 sweeps a week comes to 122.
+# Daily at 06:05 KST - a clear hour before the round-trip job so the two never
+# queue behind each other. Every date pair costs one SerpApi search and the free
+# plan gives 250 a month, so this fits only because Porto-out was dropped:
+# 1 combination x 7 pairs x 31 days comes to 217.
 on:
   schedule:
-    - cron: "5 21 * * 0,3"
+    - cron: "5 21 * * *"
   workflow_dispatch:
 
 permissions:

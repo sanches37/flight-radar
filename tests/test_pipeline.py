@@ -16,7 +16,7 @@ from flight_radar.tracker import Paths, collect, run
 KST = timezone.utc
 NOW = datetime(2026, 8, 21, 9, 0, tzinfo=KST)
 DEPART, RETURN = date(2026, 10, 5), date(2026, 10, 15)
-WEEKS_PER_MONTH = 4.35
+DAYS_PER_MONTH = 31
 
 
 def test_date_pairs_stay_inside_the_travel_window(route):
@@ -39,7 +39,7 @@ def test_date_pairs_drop_combinations_that_overrun_the_window(route):
 def test_routes_yaml_parses():
     routes = load_routes(Paths(_repo_root()).routes)
 
-    assert {route.id for route in routes} == {"icn-lis", "icn-opo", "icn-lis-opo", "icn-lis-mad"}
+    assert {route.id for route in routes} == {"icn-lis", "icn-opo", "icn-lis-mad"}
     assert all(route.date_pairs() for route in routes)
     assert all(route.provider in PROVIDERS for route in routes)
 
@@ -47,15 +47,15 @@ def test_routes_yaml_parses():
 def test_the_metered_routes_stay_inside_the_free_search_quota():
     """SerpApi gives 250 searches a month; widening a window must fail here first.
 
-    One search per date pair, two sweeps a week. Quota exhaustion would show up
-    as silently missing open-jaw prices, which nothing else in the pipeline
-    would notice.
+    One search per date pair, once a day. Quota exhaustion would show up as
+    silently missing open-jaw prices, which nothing else in the pipeline would
+    notice. Adding a second open-jaw combination breaks this - that is the point.
     """
     routes = load_routes(Paths(_repo_root()).routes)
     metered = [route for route in routes if route.provider == "serpapi_openjaw"]
     per_sweep = sum(len(route.date_pairs()) for route in metered)
 
-    assert per_sweep * 2 * WEEKS_PER_MONTH <= 250
+    assert per_sweep * DAYS_PER_MONTH <= 250
 
 
 def test_each_source_only_runs_the_routes_that_declare_it():
@@ -63,7 +63,7 @@ def test_each_source_only_runs_the_routes_that_declare_it():
     routes = load_routes(Paths(_repo_root()).routes)
 
     assert {r.id for r in routes_for(routes, "google_flights")} == {"icn-lis", "icn-opo"}
-    assert {r.id for r in routes_for(routes, "serpapi_openjaw")} == {"icn-lis-opo", "icn-lis-mad"}
+    assert {r.id for r in routes_for(routes, "serpapi_openjaw")} == {"icn-lis-mad"}
     assert routes_for(routes, "fake") == routes
 
 
