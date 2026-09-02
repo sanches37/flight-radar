@@ -57,8 +57,8 @@ routes:
     return_from: MAD
     provider: serpapi_openjaw
     window:
-      depart_from: 2026-10-06
-      depart_until: 2026-10-07
+      depart_from: 2026-10-05
+      depart_until: 2026-10-06
       # 2026-10-13 마드리드 아틀레티코 경기 예매 완료. 그 전 귀국은 무효다.
       return_after: 2026-10-14
       return_by: 2026-10-16
