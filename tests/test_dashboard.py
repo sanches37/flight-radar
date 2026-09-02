@@ -4,7 +4,7 @@ from datetime import date, datetime, timezone
 
 from conftest import make_insight, make_quote
 
-from flight_radar.dashboard import RouteData, render
+from flight_radar.dashboard import RouteData, _history_curve, observed_lows, render
 
 NOW = datetime(2026, 8, 21, 13, 0, tzinfo=timezone.utc)
 CHEAP_TODAY = make_insight((1_800_000,) * 20 + (1_100_000,)).curve_krw
@@ -123,3 +123,41 @@ def test_a_round_trip_section_is_unchanged(route):
     page = _page(route, [make_quote(1_350_000, date(2026, 8, 21))])
 
     assert "<h2>ICN → LIS</h2>" in page
+
+
+def test_observed_lows_keeps_one_price_per_collection_day(route):
+    """오픈조는 Google 곡선이 없어 우리가 쌓은 관측이 유일한 히스토리다."""
+    quotes = [
+        make_quote(1_500_000, date(2026, 8, 21)),
+        make_quote(1_300_000, date(2026, 8, 21)),   # 같은 날 더 싼 견적
+        make_quote(1_400_000, date(2026, 8, 25)),
+    ]
+
+    assert observed_lows(route, quotes) == {
+        date(2026, 8, 21): 1_300_000,
+        date(2026, 8, 25): 1_400_000,
+    }
+
+
+def test_observed_lows_ignores_fares_the_trip_cannot_use(route):
+    """제약 위반 운임이 곡선을 끌어내리면 '싸다'는 판단이 통째로 틀어진다."""
+    quotes = [
+        make_quote(900_000, date(2026, 8, 21), stops=3),
+        make_quote(1_300_000, date(2026, 8, 21)),
+    ]
+
+    assert observed_lows(route, quotes) == {date(2026, 8, 21): 1_300_000}
+
+
+def test_a_single_observation_draws_no_curve():
+    """점 하나로 선을 그리면 추세가 있는 것처럼 보인다."""
+    assert _history_curve({date(2026, 8, 21): 1_300_000}) == ""
+
+
+def test_the_history_curve_is_labelled_with_real_dates():
+    """수집이 매일은 아니므로 'N일 전'으로 눈금을 매기면 과장이 된다."""
+    svg = _history_curve({date(2026, 8, 21): 1_300_000, date(2026, 8, 25): 1_400_000})
+
+    assert "08-21" in svg and "08-25" in svg
+    assert "일 전" not in svg
+    assert "수집 2회" in svg

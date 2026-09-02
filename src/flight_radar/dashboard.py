@@ -13,7 +13,7 @@ where a human will notice it.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from html import escape
 
@@ -33,6 +33,14 @@ class RouteData:
     route: Route
     quotes: list[Quote]
     curves: Mapping[str, Mapping[date, int]]
+    history: Mapping[date, int] = field(default_factory=dict)
+    """Cheapest eligible price we ourselves recorded, per collection day.
+
+    Open-jaw has no Google curve to draw - the multi-city response carries no
+    price_insights - so the only history that exists for it is the one this
+    tool accumulated. Kept separate from `curves` because the two are not the
+    same measure: Google's is daily and dense, ours is one point per sweep.
+    """
 
 
 def render(data: Sequence[RouteData], generated_at: datetime) -> str:
@@ -53,7 +61,7 @@ def _section(data: RouteData) -> str:
     parts = [
         f"<h2>{_heading(route)}</h2>",
         _verdict(route, cheapest, market),
-        _curve(envelope) if envelope else "",
+        _curve(envelope) if envelope else _history_curve(data.history),
         _heatmap(route, grid) if grid else "<p class='empty'>아직 수집된 견적이 없습니다.</p>",
         _health(data),
     ]
@@ -140,6 +148,61 @@ def _curve(envelope: Mapping[date, int]) -> str:
         f"<text class='x' x='{PAD}' y='{HEIGHT - 6}'>{len(days) - 1}일 전</text>"
         f"<text class='x end' x='{WIDTH - PAD}' y='{HEIGHT - 6}'>오늘</text>"
         "</svg>"
+    )
+
+
+def observed_lows(route: Route, quotes: Sequence[Quote]) -> dict[date, int]:
+    """Our own record: the cheapest eligible price seen on each collection day.
+
+    Constraint-violating fares are excluded for the same reason alerting
+    excludes them - a cheap three-stop fare is not a fare this trip can use.
+    """
+    lows: dict[date, int] = {}
+    for quote in quotes:
+        if not route.constraints.allows(quote.stops, quote.duration_minutes, quote.carriers):
+            continue
+        day = quote.observed_at.date()
+        lows[day] = min(lows.get(day, quote.price_krw), quote.price_krw)
+    return lows
+
+
+def _history_curve(history: Mapping[date, int]) -> str:
+    """The same shape as the Google curve, but plotted from our own sweeps.
+
+    Labelled with real dates, not "N일 전": sweeps are not daily, so evenly
+    spacing them and calling the gaps days would overstate what we measured.
+    """
+    if len(history) < 2:
+        return ""
+
+    days = sorted(history)
+    prices = [history[day] for day in days]
+    low, high = min(prices), max(prices)
+    span = high - low or 1
+    step = (WIDTH - 2 * PAD) / max(len(days) - 1, 1)
+
+    def point(index: int, price: int) -> tuple[float, float]:
+        y = HEIGHT - PAD - (price - low) / span * (HEIGHT - 2 * PAD)
+        return PAD + index * step, y
+
+    line = " ".join(f"{x:.1f},{y:.1f}" for x, y in map(point, range(len(prices)), prices))
+    last_x, last_y = point(len(prices) - 1, prices[-1])
+    dots = "".join(
+        f"<circle class='obs' cx='{x:.1f}' cy='{y:.1f}' r='2.5'/>"
+        for x, y in map(point, range(len(prices)), prices)
+    )
+
+    return (
+        f"<svg class='curve' viewBox='0 0 {WIDTH} {HEIGHT}' role='img' "
+        f"aria-label='직접 수집한 {len(days)}회의 최저가 추이'>"
+        f"<polyline points='{line}'/>{dots}"
+        f"<circle cx='{last_x:.1f}' cy='{last_y:.1f}' r='4'/>"
+        f"<text class='y' x='4' y='{PAD}'>{high:,}</text>"
+        f"<text class='y' x='4' y='{HEIGHT - PAD + 4}'>{low:,}</text>"
+        f"<text class='x' x='{PAD}' y='{HEIGHT - 6}'>{days[0].strftime('%m-%d')}</text>"
+        f"<text class='x end' x='{WIDTH - PAD}' y='{HEIGHT - 6}'>{days[-1].strftime('%m-%d')}</text>"
+        "</svg>"
+        f"<p class='note'>수집 {len(days)}회 · 제약 통과 최저가</p>"
     )
 
 
@@ -234,6 +297,7 @@ section {{ border-top: 1px solid #ddd; }}
 .curve {{ width: 100%; height: auto; display: block; margin: 8px 0 4px; }}
 .curve polyline {{ fill: none; stroke: #2b6cb0; stroke-width: 2; }}
 .curve circle {{ fill: #2b6cb0; }}
+.curve circle.obs {{ fill: #90b8dd; }}
 .curve text {{ fill: #888; font-size: 11px; }}
 .curve text.end {{ text-anchor: end; }}
 .heatmap {{ border-collapse: collapse; width: 100%; font-size: 13px; margin: 8px 0; }}

@@ -13,11 +13,11 @@ from pathlib import Path
 
 from flight_radar.alert import record_sent
 from flight_radar.config import Route, load_routes
-from flight_radar.dashboard import RouteData, render
+from flight_radar.dashboard import RouteData, observed_lows, render
 from flight_radar.health import record_run
 from flight_radar.notify import send, send_text
 from flight_radar.providers import FakeProvider, GoogleFlightsProvider, SerpApiOpenJawProvider
-from flight_radar.store import read_curves, read_latest
+from flight_radar.store import read_curves, read_latest, read_since
 from flight_radar.tracker import Paths, RunResult, run
 
 PROVIDERS = {
@@ -25,6 +25,8 @@ PROVIDERS = {
     for cls in (FakeProvider, GoogleFlightsProvider, SerpApiOpenJawProvider)
 }
 KST = timezone(timedelta(hours=9))
+# 대시보드 곡선에 쓸 관측 히스토리 길이. Google 곡선(60일)과 눈금을 맞춘다.
+HISTORY_SPAN = timedelta(days=60)
 
 
 def main() -> None:
@@ -68,6 +70,9 @@ def dashboard() -> None:
             route=route,
             quotes=read_latest(paths.data, route.id, now.date()),
             curves=read_curves(paths.curves, route.id),
+            history=observed_lows(
+                route, read_since(paths.data, route.id, now.date() - HISTORY_SPAN, now.date())
+            ),
         )
         for route in load_routes(paths.routes)
     ]
