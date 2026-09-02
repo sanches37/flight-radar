@@ -37,6 +37,7 @@ class Route:
     provider: str = "google_flights"
     return_from: str | None = None
     depart_until: date | None = None
+    return_after: date | None = None
 
     @property
     def inbound_origin(self) -> str:
@@ -46,9 +47,11 @@ class Route:
     def date_pairs(self) -> list[tuple[date, date]]:
         """Every (depart, return) pair that fits inside the travel window.
 
-        depart_until caps the departure side independently of return_by. Open-jaw
-        costs a metered API call per pair, so its window is narrowed to the days
-        that actually carry the cheap fares rather than the whole grid.
+        depart_until caps the departure side independently of return_by, and
+        return_after caps it from below - a fixed appointment abroad rules out
+        every earlier return. Open-jaw costs a metered API call per pair, so its
+        window is narrowed to the days that can actually be flown rather than
+        the whole grid.
         """
         pairs: list[tuple[date, date]] = []
         departure = self.depart_from
@@ -59,6 +62,8 @@ class Route:
                 break
             for nights in sorted(self.trip_nights):
                 arrival = departure + timedelta(days=nights)
+                if self.return_after and arrival < self.return_after:
+                    continue
                 if arrival <= self.return_by:
                     pairs.append((departure, arrival))
             departure += timedelta(days=1)
@@ -91,6 +96,7 @@ def _parse_route(entry: dict) -> Route:
         )
 
     depart_until = window.get("depart_until")
+    return_after = window.get("return_after")
 
     return Route(
         id=entry["id"],
@@ -105,6 +111,7 @@ def _parse_route(entry: dict) -> Route:
         provider=entry.get("provider", "google_flights"),
         return_from=entry.get("return_from"),
         depart_until=_as_date(depart_until) if depart_until else None,
+        return_after=_as_date(return_after) if return_after else None,
     )
 
 

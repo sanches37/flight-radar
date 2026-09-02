@@ -230,3 +230,18 @@ def _repo_root():
     from pathlib import Path
 
     return Path(__file__).resolve().parent.parent
+
+
+def test_a_fixed_date_abroad_rules_out_earlier_returns(route):
+    """현지 일정(2026-10-13 마드리드 경기)보다 이른 귀국은 탈 수 없다."""
+    anchored = replace(route, return_after=date(2026, 10, 16))
+
+    assert {back for _, back in route.date_pairs()} == {date(2026, 10, 15), date(2026, 10, 16)}
+    assert {back for _, back in anchored.date_pairs()} == {date(2026, 10, 16)}
+    assert len(anchored.date_pairs()) < len(route.date_pairs())
+
+
+def test_return_after_is_optional(route):
+    """제약이 없는 노선은 종전대로 전 구간을 훑는다."""
+    assert route.return_after is None
+    assert len(route.date_pairs()) == 3
