@@ -84,7 +84,9 @@ def cheapest_by_pair(route: Route, quotes: Sequence[Quote]) -> dict[tuple[date, 
     for quote in quotes:
         if quote.return_date is None:
             continue
-        if not route.constraints.allows(quote.stops, quote.duration_minutes, quote.carriers):
+        if not route.constraints.allows(
+            quote.stops, quote.duration_minutes, quote.carriers, quote.return_duration_minutes
+        ):
             continue
         pair = (quote.depart_date, quote.return_date)
         grid[pair] = min(grid.get(pair, quote.price_krw), quote.price_krw)
@@ -159,7 +161,9 @@ def observed_lows(route: Route, quotes: Sequence[Quote]) -> dict[date, int]:
     """
     lows: dict[date, int] = {}
     for quote in quotes:
-        if not route.constraints.allows(quote.stops, quote.duration_minutes, quote.carriers):
+        if not route.constraints.allows(
+            quote.stops, quote.duration_minutes, quote.carriers, quote.return_duration_minutes
+        ):
             continue
         day = quote.observed_at.date()
         lows[day] = min(lows.get(day, quote.price_krw), quote.price_krw)

@@ -15,11 +15,29 @@ class Constraints:
     max_duration_minutes: int | None = None
     exclude_carriers: tuple[str, ...] = ()
 
-    def allows(self, stops: int, duration_minutes: int, carriers: tuple[str, ...]) -> bool:
+    def allows(
+        self,
+        stops: int,
+        duration_minutes: int,
+        carriers: tuple[str, ...],
+        return_duration_minutes: int | None = None,
+    ) -> bool:
+        """`return_duration_minutes` is checked against the same cap.
+
+        Open-jaw flies home from a different airport, so the way back can blow
+        past the limit while the way out sits comfortably inside it. Left None
+        for round trips, where the response never describes the flight home.
+        """
         if self.max_stops is not None and stops > self.max_stops:
             return False
-        if self.max_duration_minutes is not None and duration_minutes > self.max_duration_minutes:
-            return False
+        if self.max_duration_minutes is not None:
+            if duration_minutes > self.max_duration_minutes:
+                return False
+            if (
+                return_duration_minutes is not None
+                and return_duration_minutes > self.max_duration_minutes
+            ):
+                return False
         return not any(carrier in self.exclude_carriers for carrier in carriers)
 
 

@@ -17,6 +17,7 @@ KST = timezone.utc
 NOW = datetime(2026, 8, 21, 9, 0, tzinfo=KST)
 DEPART, RETURN = date(2026, 10, 5), date(2026, 10, 15)
 DAYS_PER_MONTH = 31
+CALLS_PER_PAIR = 2   # 가는 편 + departure_token 으로 받는 오는 편
 
 
 def test_date_pairs_stay_inside_the_travel_window(route):
@@ -47,15 +48,16 @@ def test_routes_yaml_parses():
 def test_the_metered_routes_stay_inside_the_free_search_quota():
     """SerpApi gives 250 searches a month; widening a window must fail here first.
 
-    One search per date pair, once a day. Quota exhaustion would show up as
-    silently missing open-jaw prices, which nothing else in the pipeline would
-    notice. Adding a second open-jaw combination breaks this - that is the point.
+    **Two** searches per date pair, once a day: the first response describes
+    only the flight out, so the way home costs another call. Quota exhaustion
+    would show up as silently missing open-jaw prices, which nothing else in
+    the pipeline would notice. Widening the window breaks this - that is the point.
     """
     routes = load_routes(Paths(_repo_root()).routes)
     metered = [route for route in routes if route.provider == "serpapi_openjaw"]
     per_sweep = sum(len(route.date_pairs()) for route in metered)
 
-    assert per_sweep * DAYS_PER_MONTH <= 250
+    assert per_sweep * CALLS_PER_PAIR * DAYS_PER_MONTH <= 250
 
 
 def test_each_source_only_runs_the_routes_that_declare_it():

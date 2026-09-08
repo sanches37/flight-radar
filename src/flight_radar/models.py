@@ -40,6 +40,10 @@ class Quote:
     legs: tuple[Leg, ...] = field(default=())
     # Set only when the trip home starts somewhere else than it landed.
     return_from: str | None = None
+    # Open-jaw only. The flight home is a different route from the flight out,
+    # so the outbound duration says nothing about it - and a fare can be cheap
+    # precisely because the way home parks you in a hub for thirteen hours.
+    return_duration_minutes: int | None = None
 
     def to_json(self) -> dict:
         raw = asdict(self)

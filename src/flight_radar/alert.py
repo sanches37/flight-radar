@@ -62,7 +62,9 @@ def find_alerts(
 
 
 def _satisfies(route: Route, quote: Quote) -> bool:
-    return route.constraints.allows(quote.stops, quote.duration_minutes, quote.carriers)
+    return route.constraints.allows(
+        quote.stops, quote.duration_minutes, quote.carriers, quote.return_duration_minutes
+    )
 
 
 def _recent_low(route: Route, history: list[Quote], today: date) -> int | None:

@@ -56,9 +56,32 @@ class SerpApiOpenJawProvider:
             )
             return Observation()
 
+        outbound = _itineraries(payload)
+        if not outbound:
+            return Observation()
+
+        # The first response describes only the flight out. The way home is a
+        # separate route on an open jaw, and its price is what decides the
+        # trip - the cheapest fare here parks you in Abu Dhabi for thirteen
+        # hours. One more call per pair buys that, using the token SerpApi
+        # hands back for the cheapest outbound.
+        cheapest = min(outbound, key=lambda entry: entry["price"])
+        try:
+            homeward = _search(
+                key, route, depart_date, return_date, departure_token=cheapest["departure_token"]
+            )
+        except Exception as error:
+            print(
+                f"{self.name}: {route.id} {depart_date}..{return_date} return leg failed: {error!r}",
+                file=sys.stderr,
+            )
+            return Observation()
+
         # No insights: the multi-city response carries best_flights, other_flights
         # and airports only. Open-jaw has no sixty-day curve to rank against.
-        return Observation(quotes=quotes_from(payload, route, (depart_date, return_date), observed_at))
+        return Observation(
+            quotes=quotes_from(homeward, route, (depart_date, return_date), observed_at, cheapest)
+        )
 
 
 def quotes_from(
@@ -66,12 +89,14 @@ def quotes_from(
     route: Route,
     dates: tuple[date, date],
     observed_at: datetime,
+    outbound: dict,
 ) -> list[Quote]:
-    """Map one multi-city response onto Quotes, cheapest first.
+    """Map the second-stage response onto Quotes, cheapest first.
 
-    SerpApi prices the whole open-jaw as one number and describes only the
-    outbound, exactly as Google prices a round trip, so stops, duration and
-    carriers all describe the flight out.
+    `payload` lists the ways home for one chosen outbound, and each carries the
+    price of the whole trip. `stops`, `duration_minutes` and `carriers` still
+    describe the flight out - that is what `outbound` is for - while
+    `return_duration_minutes` describes the flight home.
     """
     depart_date, return_date = dates
     quotes = [
@@ -84,11 +109,12 @@ def quotes_from(
             depart_date=depart_date,
             return_date=return_date,
             price_krw=itinerary["price"],
-            stops=len(itinerary["flights"]) - 1,
-            duration_minutes=itinerary["total_duration"],
-            carriers=_carriers(itinerary),
+            stops=len(outbound["flights"]) - 1,
+            duration_minutes=outbound["total_duration"],
+            carriers=_carriers(outbound),
             observed_at=observed_at,
             return_from=route.inbound_origin,
+            return_duration_minutes=itinerary["total_duration"],
         )
         for itinerary in _itineraries(payload)
     ]
@@ -111,7 +137,13 @@ def _carriers(itinerary: dict) -> tuple[str, ...]:
     return tuple(names)
 
 
-def _search(key: str, route: Route, depart_date: date, return_date: date) -> dict:
+def _search(
+    key: str,
+    route: Route,
+    depart_date: date,
+    return_date: date,
+    departure_token: str | None = None,
+) -> dict:
     """Deliberately carries no constraint filters, like every other provider."""
     legs = [
         {
@@ -136,6 +168,7 @@ def _search(key: str, route: Route, depart_date: date, return_date: date) -> dic
             "adults": "1",
             "travel_class": "1",
             "api_key": key,
+            **({"departure_token": departure_token} if departure_token else {}),
         },
         timeout=TIMEOUT_SECONDS,
     )
