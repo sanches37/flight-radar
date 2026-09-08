@@ -62,6 +62,9 @@ def _market_lines(alert: Alert) -> list[str]:
 
 
 def _why(alert: Alert) -> str:
+    if alert.reason == "low":
+        under = alert.baseline_krw - alert.quote.price_krw
+        return f"30일 최저 경신 — 이전 최저({alert.baseline_krw:,}) 대비 {under:,}원 하락"
     if alert.reason == "target":
         return "목표가 도달"
     if alert.reason == "percentile":

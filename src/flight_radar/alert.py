@@ -14,6 +14,9 @@ from flight_radar.models import PriceInsight, Quote
 
 HISTORY_DAYS = 30
 DROP_RATIO = 0.90
+# 이보다 작은 차이로는 최저를 경신해도 알리지 않는다. 매일 수집하는 노선에서
+# 몇 천 원짜리 갱신까지 발사하면 결국 알림을 끄게 된다.
+NEW_LOW_MARGIN = 10_000
 RENOTIFY_AFTER_DAYS = 7
 
 
@@ -51,6 +54,10 @@ def find_alerts(
         return [Alert(best, "percentile", baseline, market)]
     if baseline is not None and best.price_krw <= baseline * DROP_RATIO:
         return [Alert(best, "drop", baseline, market)]
+    # Last, so it never masks a louder reason: a ten percent fall is a record
+    # low too, and reporting it as merely "new low" would lose information.
+    if baseline is not None and best.price_krw <= baseline - NEW_LOW_MARGIN:
+        return [Alert(best, "low", baseline, market)]
     return []
 
 
@@ -98,9 +105,23 @@ def _sent_since(state: dict[str, str], alert: Alert, cutoff: date) -> bool:
 
 
 def _dedupe_key(alert: Alert) -> str:
-    """Price banded to 50k KRW - a 3,000 KRW wobble is not news."""
+    """Price banded to 50k KRW - a 3,000 KRW wobble is not news.
+
+    A record low is keyed by its exact price instead, whatever its reason.
+    Banding hid the thing the alert existed to report: on 2026-09-08 the fare
+    fell to a new low but landed in the same 50k band as a target alert sent
+    five days earlier, so nothing was sent. A record is by definition below
+    every price before it, so an exact key still cannot repeat.
+    """
+    if _is_record(alert):
+        return f"{alert.quote.route_id}|{alert.quote.depart_date}|{alert.reason}|{alert.quote.price_krw}"
+
     band = alert.quote.price_krw // 50_000
     return f"{alert.quote.route_id}|{alert.quote.depart_date}|{alert.reason}|{band}"
+
+
+def _is_record(alert: Alert) -> bool:
+    return alert.baseline_krw is not None and alert.quote.price_krw < alert.baseline_krw
 
 
 def _load_state(path: Path) -> dict[str, str]:

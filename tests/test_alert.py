@@ -1,4 +1,6 @@
 from datetime import date
+from pathlib import Path
+from tempfile import mkdtemp
 
 from conftest import make_insight, make_quote
 
@@ -31,9 +33,21 @@ def test_alerts_on_ten_percent_drop_against_recent_low(route):
     assert alerts[0].baseline_krw == 2_000_000
 
 
-def test_shallow_dip_is_not_a_drop(route):
+def test_a_shallow_dip_is_not_a_drop_but_is_still_a_record_low(route):
+    """2026-09-08: 최저를 경신했는데 10%에 못 미쳐 아무것도 발사되지 않았다."""
     history = [make_quote(2_000_000, date(2026, 8, 10))]
     fresh = [make_quote(1_850_000, TODAY)]
+
+    alerts = find_alerts(route, fresh, history, today=TODAY)
+
+    assert [alert.reason for alert in alerts] == ["low"]
+    assert alerts[0].baseline_krw == 2_000_000
+
+
+def test_a_wobble_below_the_margin_is_not_a_record_worth_sending(route):
+    """매일 수집하는 노선에서 몇 천 원 갱신까지 알리면 알림을 끄게 된다."""
+    history = [make_quote(2_000_000, date(2026, 8, 10))]
+    fresh = [make_quote(1_997_000, TODAY)]
 
     assert find_alerts(route, fresh, history, today=TODAY) == []
 
@@ -158,3 +172,32 @@ def test_alerting_still_works_when_no_curve_came_back(route):
 
     assert [alert.reason for alert in alerts] == ["target"]
     assert alerts[0].market is None
+
+
+def test_a_record_low_is_not_hidden_by_an_earlier_alert_in_the_same_band(route):
+    """실제 사고 재현: 9/3에 139.9만 목표가 알림 → 9/8 136.5만이 같은 27번
+    구간이라 7일 차단에 걸려 조용히 사라졌다. 최저 경신은 구간으로 묶지 않는다.
+    """
+    state = Path(mkdtemp()) / "alerts.json"
+    baseline = [make_quote(1_399_000, date(2026, 9, 2))]
+
+    first = find_alerts(route, [make_quote(1_399_000, date(2026, 9, 3))], [], date(2026, 9, 3))
+    record_sent(first, state, date(2026, 9, 3))
+
+    later = find_alerts(route, [make_quote(1_365_000, TODAY)], baseline, TODAY)
+
+    # 두 알림 모두 목표가 도달이고 같은 5만원 구간(27번)이다. 그래도 뒤엣것은
+    # 직전 최저를 깼으므로 구간이 아니라 정확한 가격으로 기록돼 살아남는다.
+    assert [alert.reason for alert in later] == ["target"]
+    assert later[0].baseline_krw == 1_399_000
+    assert suppress_repeats(later, state, TODAY) == later
+
+
+def test_the_same_record_is_not_sent_twice(route):
+    state = Path(mkdtemp()) / "alerts.json"
+    history = [make_quote(2_000_000, date(2026, 8, 10))]
+    alerts = find_alerts(route, [make_quote(1_850_000, TODAY)], history, TODAY)
+
+    record_sent(alerts, state, TODAY)
+
+    assert suppress_repeats(alerts, state, TODAY) == []
