@@ -24,6 +24,8 @@ from flight_radar.models import Observation, Quote
 
 ENDPOINT = "https://serpapi.com/search"
 NAME = "serpapi_openjaw"
+# 몇 번째로 싼 가는 편까지 오는 편을 확인할지. 조회 비용이 여기에 비례한다.
+OUTBOUND_FOLLOWED = 3
 TIMEOUT_SECONDS = 60.0
 
 
@@ -60,28 +62,31 @@ class SerpApiOpenJawProvider:
         if not outbound:
             return Observation()
 
-        # The first response describes only the flight out. The way home is a
-        # separate route on an open jaw, and its price is what decides the
-        # trip - the cheapest fare here parks you in Abu Dhabi for thirteen
-        # hours. One more call per pair buys that, using the token SerpApi
-        # hands back for the cheapest outbound.
-        cheapest = min(outbound, key=lambda entry: entry["price"])
-        try:
-            homeward = _search(
-                key, route, depart_date, return_date, departure_token=cheapest["departure_token"]
-            )
-        except Exception as error:
-            print(
-                f"{self.name}: {route.id} {depart_date}..{return_date} return leg failed: {error!r}",
-                file=sys.stderr,
-            )
-            return Observation()
+        # The first response describes only the flight out; the way home costs
+        # another call per outbound. Several are followed, not just the cheapest:
+        # on 2026-09-09 the cheapest outbound (1,507,400) led only to 4.5M and
+        # 7.0M ways home, while the second cheapest (1,532,400) reached a
+        # 1,532,400 trip. Following one outbound reported the 4.5M as the day's
+        # price - a threefold error, not a market move.
+        quotes = []
+        for candidate in sorted(outbound, key=lambda entry: entry["price"])[:OUTBOUND_FOLLOWED]:
+            try:
+                homeward = _search(
+                    key, route, depart_date, return_date,
+                    departure_token=candidate["departure_token"],
+                )
+            except Exception as error:
+                print(
+                    f"{self.name}: {route.id} {depart_date}..{return_date} "
+                    f"return leg failed: {error!r}",
+                    file=sys.stderr,
+                )
+                continue
+            quotes += quotes_from(homeward, route, (depart_date, return_date), observed_at, candidate)
 
         # No insights: the multi-city response carries best_flights, other_flights
         # and airports only. Open-jaw has no sixty-day curve to rank against.
-        return Observation(
-            quotes=quotes_from(homeward, route, (depart_date, return_date), observed_at, cheapest)
-        )
+        return Observation(quotes=sorted(quotes, key=lambda quote: quote.price_krw))
 
 
 def quotes_from(

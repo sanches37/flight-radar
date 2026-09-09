@@ -9,7 +9,7 @@ whole trip. Only the mapping is tested - the search itself belongs to SerpApi.
 from dataclasses import replace
 from datetime import date, datetime, timezone
 
-from flight_radar.providers.serpapi_openjaw import quotes_from
+from flight_radar.providers.serpapi_openjaw import OUTBOUND_FOLLOWED, quotes_from
 
 KST = timezone.utc
 NOW = datetime(2026, 9, 8, 14, 0, tzinfo=KST)
@@ -108,3 +108,10 @@ def test_constraints_are_not_applied_at_collection_time(route):
     assert not _open_jaw(route).constraints.allows(
         quote.stops, quote.duration_minutes, quote.carriers, quote.return_duration_minutes
     )
+
+
+def test_more_than_one_outbound_is_followed(route):
+    """2026-09-09 사고: 가장 싼 가는 편의 오는 편이 457만·695만뿐이었는데,
+    두 번째로 싼 가는 편에는 153만이 있었다. 하나만 따라가면 3배를 오보한다.
+    """
+    assert OUTBOUND_FOLLOWED >= 2
