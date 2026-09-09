@@ -2,10 +2,13 @@ name: track
 
 # 07:05 / 19:05 KST. Off the hour on purpose - GitHub's scheduler is busiest
 # at :00 and delays runs by tens of minutes there.
+# 2026-09-10 자동 수집 중단. 이번 여행(10/05 출발) 항공권을 샀고, 당분간
+# 감시할 대상이 없다. 다시 켜려면 아래 schedule 두 줄의 주석을 풀면 된다.
+# 그때까지는 수동 실행만 가능하다: gh workflow run track.yml
 on:
-  schedule:
-    - cron: "5 22 * * *"
-    - cron: "5 10 * * *"
+  # schedule:
+  #   - cron: "5 22 * * *"
+  #   - cron: "5 10 * * *"
   workflow_dispatch:
 
 permissions:

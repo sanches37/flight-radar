@@ -4,9 +4,11 @@ name: openjaw
 # queue behind each other. Every date pair costs one SerpApi search and the free
 # plan gives 250 a month, so this fits only because Porto-out was dropped:
 # 1 combination x 7 pairs x 31 days comes to 217.
+# 2026-09-10 자동 수집 중단. 오픈조는 조회 1건이 유료 한도를 깎으므로 특히
+# 놀려둘 이유가 없다. 다시 켜려면 아래 schedule 주석을 풀 것.
 on:
-  schedule:
-    - cron: "5 21 * * *"
+  # schedule:
+  #   - cron: "5 21 * * *"
   workflow_dispatch:
 
 permissions:
